@@ -1,0 +1,9 @@
+[package]
+name = "nvim-cat"
+version = "0.1.0"
+authors = ["Cheney Lin <lincheney@gmail.com>"]
+
+[dependencies]
+serde = "~ 0.8"
+rmp = "~ 0.7"
+rmp-serde = "0.10"
