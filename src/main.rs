@@ -12,13 +12,6 @@ use serde::{Serialize, Deserialize};
 const HEIGHT : usize = 100;
 const WIDTH : usize = 100;
 
-pub fn split_rgb(i: u32) -> (u8, u8, u8) {
-    (   ((i & 0xff0000) >> 16) as u8,
-        ((i & 0x00ff00) >> 8) as u8,
-        (i & 0x0000ff) as u8,
-    )
-}
-
 enum Attr {
     BOLD = 1,
     ITALIC = 2,
@@ -36,6 +29,14 @@ struct Highlight {
 impl Highlight {
     pub fn new() -> Self {
         Highlight{ fg: "255;255;255".to_string(), bg: "0;0;0".to_string(), attrs: 0 }
+    }
+
+    pub fn rgb_to_string(val: u32) -> String {
+        format!("{};{};{}",
+            val >> 16,
+            (val & 0x00ff00) >> 8,
+            val & 0xff,
+        )
     }
 
     pub fn to_string(&self) -> String {
@@ -118,7 +119,12 @@ impl<'a> Printer<'a> {
             self.quit();
             self.eof = true;
         } else {
-            print!("{1:0$}{hl}{string}", self.offset, "", string=string, hl=self.hl.to_string());
+            print!("{default_hl}{1:0$}{hl}{string}",
+                self.offset, "",
+                string=string,
+                hl=self.hl.to_string(),
+                default_hl=self.default_hl.to_string(),
+            );
             self.cursor[1] += self.offset + string.len();
             self.offset = 0;
         }
@@ -145,13 +151,13 @@ impl<'a> Printer<'a> {
             self.cursor = [0, 0];
             self.offset = 0;
             if !self.eof {
-                println!("");
+                println!("{}", self.default_hl.to_string());
             }
 
         } else if row == self.cursor[0]+1 {
             // new line
             if !self.eof {
-                println!("");
+                println!("{}", self.default_hl.to_string());
             }
             self.cursor = [row, 0];
 
@@ -166,7 +172,13 @@ impl<'a> Printer<'a> {
     fn handle_highlight_set(&mut self, args: &[rmp::Value]) {
         let hl = match args.last().and_then(|x| x.as_array().unwrap().last()) {
             Some(a) => a.as_map().unwrap(),
-            None => return
+            None => {
+                // self.hl = self.default_hl.clone();
+                self.hl.fg = self.default_hl.fg.clone();
+                self.hl.bg = self.default_hl.bg.clone();
+                self.hl.attrs = self.default_hl.attrs;
+                return
+            },
         };
 
         let mut fg : Option<String> = None;
@@ -178,12 +190,10 @@ impl<'a> Printer<'a> {
 
             match key.as_str().unwrap() {
                 "foreground" => {
-                    let (r, g, b) = split_rgb(value.as_u64().unwrap() as u32);
-                    fg = Some( format!("{};{};{}", r, g, b) );
+                    fg = Some( Highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
                 },
                 "background" => {
-                    let (r, g, b) = split_rgb(value.as_u64().unwrap() as u32);
-                    bg = Some( format!("{};{};{}", r, g, b) );
+                    bg = Some( Highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
                 },
                 "reverse" => {
                     bit = Some(Attr::REVERSE);
@@ -219,6 +229,7 @@ impl<'a> Printer<'a> {
 
     fn handle_update(&mut self, update: &rmp::Value) {
         let update = update.as_array().unwrap();
+        // println!("\n{:?}", update);
         match update[0].as_str().unwrap() {
             "put" => {
                 self.handle_put(&update[1..]);
@@ -228,6 +239,22 @@ impl<'a> Printer<'a> {
             },
             "highlight_set" => {
                 self.handle_highlight_set(&update[1..]);
+            },
+            "update_fg" => {
+                match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
+                    Some(x) => {
+                        self.default_hl.fg = Highlight::rgb_to_string(x.as_u64().unwrap() as u32);
+                    },
+                    None => ()
+                };
+            },
+            "update_bg" => {
+                match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
+                    Some(x) => {
+                        self.default_hl.bg = Highlight::rgb_to_string(x.as_u64().unwrap() as u32);
+                    },
+                    None => ()
+                };
             },
             _ => (),
         }
