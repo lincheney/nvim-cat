@@ -12,6 +12,43 @@ use serde::{Serialize, Deserialize};
 const HEIGHT : usize = 100;
 const WIDTH : usize = 100;
 
+pub fn split_rgb(i: u32) -> (u8, u8, u8) {
+    (   ((i & 0xff0000) >> 16) as u8,
+        ((i & 0x00ff00) >> 8) as u8,
+        (i & 0x0000ff) as u8,
+    )
+}
+
+enum Attr {
+    BOLD = 1,
+    ITALIC = 2,
+    UNDERLINE = 4,
+    REVERSE = 8,
+}
+
+#[derive(Debug, Clone)]
+struct Highlight {
+    fg: String,
+    bg: String,
+    attrs: u8,
+}
+
+impl Highlight {
+    pub fn new() -> Self {
+        Highlight{ fg: "255;255;255".to_string(), bg: "0;0;0".to_string(), attrs: 0 }
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("\x1b[0;{bold}{italic}{underline}38;2;{fg};48;2;{bg}m",
+            bold = if self.attrs & (Attr::BOLD as u8) != 0 { "1;" } else { "" },
+            italic = if self.attrs & (Attr::ITALIC as u8) != 0 { "3;" } else { "" },
+            underline = if self.attrs & (Attr::UNDERLINE as u8) != 0 { "4;" } else { "" },
+            fg = if self.attrs & (Attr::REVERSE as u8) == 0 { &self.fg } else { &self.bg },
+            bg = if self.attrs & (Attr::REVERSE as u8) == 0 { &self.bg } else { &self.fg },
+        )
+    }
+}
+
 struct Printer<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
@@ -20,6 +57,8 @@ struct Printer<'a> {
     modeline:       bool,
     offset:         usize,
     lineno:         usize,
+    hl:             Highlight,
+    default_hl:     Highlight,
 }
 
 impl<'a> Printer<'a> {
@@ -34,6 +73,8 @@ impl<'a> Printer<'a> {
             modeline: false,
             offset: 0,
             lineno: 0,
+            hl: Highlight::new(),
+            default_hl: Highlight::new(),
         }
     }
 
@@ -77,7 +118,7 @@ impl<'a> Printer<'a> {
             self.quit();
             self.eof = true;
         } else {
-            print!("{1:0$}{2}", self.offset, "", string);
+            print!("{1:0$}{hl}{string}", self.offset, "", string=string, hl=self.hl.to_string());
             self.cursor[1] += self.offset + string.len();
             self.offset = 0;
         }
@@ -122,6 +163,60 @@ impl<'a> Printer<'a> {
         }
     }
 
+    fn handle_highlight_set(&mut self, args: &[rmp::Value]) {
+        let hl = match args.last().and_then(|x| x.as_array().unwrap().last()) {
+            Some(a) => a.as_map().unwrap(),
+            None => return
+        };
+
+        let mut fg : Option<String> = None;
+        let mut bg : Option<String> = None;
+        let mut attrs = self.default_hl.attrs;
+
+        for &(ref key, ref value) in hl.iter() {
+            let mut bit : Option<Attr> = None;
+
+            match key.as_str().unwrap() {
+                "foreground" => {
+                    let (r, g, b) = split_rgb(value.as_u64().unwrap() as u32);
+                    fg = Some( format!("{};{};{}", r, g, b) );
+                },
+                "background" => {
+                    let (r, g, b) = split_rgb(value.as_u64().unwrap() as u32);
+                    bg = Some( format!("{};{};{}", r, g, b) );
+                },
+                "reverse" => {
+                    bit = Some(Attr::REVERSE);
+                }
+                "bold" => {
+                    bit = Some(Attr::BOLD);
+                },
+                "italic" => {
+                    bit = Some(Attr::ITALIC);
+                },
+                "underline" => {
+                    bit = Some(Attr::UNDERLINE);
+                },
+                _ => (),
+            }
+
+            match bit {
+                Some(bit) => {
+                    if value.as_bool().unwrap() {
+                        attrs |= bit as u8;
+                    } else {
+                        attrs &= !( bit as u8 );
+                    }
+                },
+                None => (),
+            }
+        }
+
+        self.hl.fg = fg.unwrap_or_else(|| self.default_hl.fg.clone());
+        self.hl.bg = bg.unwrap_or_else(|| self.default_hl.bg.clone());
+        self.hl.attrs = attrs;
+    }
+
     fn handle_update(&mut self, update: &rmp::Value) {
         let update = update.as_array().unwrap();
         match update[0].as_str().unwrap() {
@@ -130,6 +225,9 @@ impl<'a> Printer<'a> {
             },
             "cursor_goto" => {
                 self.handle_cursor_goto(&update[1..]);
+            },
+            "highlight_set" => {
+                self.handle_highlight_set(&update[1..]);
             },
             _ => (),
         }
