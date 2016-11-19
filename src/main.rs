@@ -58,7 +58,6 @@ struct Printer<'a> {
     eof:            bool,
     modeline:       bool,
     offset:         usize,
-    lineno:         usize,
     hl:             Highlight,
     default_hl:     Highlight,
 }
@@ -74,7 +73,6 @@ impl<'a> Printer<'a> {
             eof: false,
             modeline: false,
             offset: 0,
-            lineno: 0,
             hl: Highlight::new(),
             default_hl: Highlight::new(),
         }
@@ -96,8 +94,8 @@ impl<'a> Printer<'a> {
         self.nvim_command("qa!");
     }
 
-    fn scroll(&self, line: usize) {
-        self.nvim_command(format!("normal {}z\n", line).as_str());
+    fn scroll(&self, down: usize) {
+        self.nvim_command(format!("normal {}gjz\n", down).as_str());
     }
 
     fn handle_put(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
@@ -150,8 +148,7 @@ impl<'a> Printer<'a> {
         if row >= HEIGHT - 2 {
             // end of page, jumped to modelines
             self.modeline = true;
-            self.lineno += HEIGHT - 1;
-            self.scroll(self.lineno);
+            self.scroll(HEIGHT - 2);
 
             self.cursor = [0, 0];
             self.offset = 0;
@@ -166,6 +163,8 @@ impl<'a> Printer<'a> {
             self.cursor[0] = row;
             return Ok(())
 
+        } else {
+            return Ok(())
         }
 
         if !self.eof {
