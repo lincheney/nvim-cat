@@ -163,7 +163,7 @@ impl<'a> Printer<'a> {
 fn main() {
     let process = Command::new("nvim")
         .arg("--embed")
-        .arg("-nR")
+        .arg("-nRZ")
         .arg("+0")
         .arg("-c").arg("set scrolloff=0 mouse= showtabline=0")
         .arg("--")
