@@ -2,6 +2,7 @@ extern crate rmp;
 extern crate rmp_serde;
 extern crate serde;
 
+use std::cell::RefCell;
 use std::process::{Command, Stdio, ChildStdout, ChildStdin};
 use std::collections::BTreeMap;
 
@@ -13,11 +14,12 @@ const WIDTH : usize = 100;
 
 struct Printer<'a> {
     deserializer:   Deserializer<ChildStdout>,
-    serializer:     Serializer<'a, rmp_serde::encode::StructArrayWriter>,
+    serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
     cursor:         [usize; 2],
     eof:            bool,
     modeline:       bool,
     offset:         usize,
+    lineno:         usize,
 }
 
 impl<'a> Printer<'a> {
@@ -25,31 +27,34 @@ impl<'a> Printer<'a> {
         let serializer = Serializer::new(stdin);
         let deserializer = Deserializer::new(stdout);
         Printer {
-            serializer: serializer,
             deserializer: deserializer,
+            serializer: RefCell::new(serializer),
             cursor: [0, 0],
             eof: false,
             modeline: false,
             offset: 0,
+            lineno: 0,
         }
     }
 
-    pub fn attach(&mut self) {
+    pub fn nvim_command(&self, command: &str) {
+        let value = ( 0, 300, "nvim_command", (command,) );
+        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
+    }
+
+    pub fn attach(&self) {
         let mut kwargs = BTreeMap::new();
         kwargs.insert("rgb", true);
         let value = ( 0, 100, "nvim_ui_attach", (WIDTH, HEIGHT, kwargs) );
-        value.serialize(&mut self.serializer).unwrap();
+        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
     }
 
-    pub fn quit(&mut self) {
-        let value = ( 0, 200, "nvim_command", ("qa!",) );
-        value.serialize(&mut self.serializer).unwrap();
+    pub fn quit(&self) {
+        self.nvim_command("qa!");
     }
 
-    fn scroll(&mut self, line: usize) {
-        let command = format!("normal {}z\n", line);
-        let value = ( 0, 300, "nvim_command", (command,) );
-        value.serialize(&mut self.serializer).unwrap();
+    fn scroll(&self, line: usize) {
+        self.nvim_command(format!("normal {}z\n", line).as_str());
     }
 
     fn handle_put(&mut self, args: &[rmp::Value]) {
@@ -93,7 +98,9 @@ impl<'a> Printer<'a> {
         if row >= HEIGHT - 2 {
             // end of page, jumped to modelines
             self.modeline = true;
-            self.scroll(HEIGHT - 1);
+            self.lineno += HEIGHT - 1;
+            self.scroll(self.lineno);
+
             self.cursor = [0, 0];
             self.offset = 0;
             if !self.eof {
