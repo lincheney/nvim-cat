@@ -2,7 +2,7 @@ extern crate rmp;
 extern crate rmp_serde;
 extern crate serde;
 
-use std::io::{stdout, stderr, Write, Error, ErrorKind};
+use std::io::{stdout, Write, Error, ErrorKind};
 use std::cell::RefCell;
 use std::process::{Command, Stdio, ChildStdout, ChildStdin};
 use std::collections::BTreeMap;
@@ -12,7 +12,6 @@ use serde::{Serialize, Deserialize};
 
 const HEIGHT : usize = 100;
 const WIDTH : usize = 100;
-const RESET : &'static str = "\x1b[0m";
 
 enum Attr {
     BOLD = 1,
@@ -127,6 +126,7 @@ impl<'a> Printer<'a> {
             }
             stdout().write(self.hl.to_string().as_bytes())?;
             stdout().write(string.as_bytes())?;
+            stdout().flush()?;
 
             self.cursor[1] += self.offset + string.len();
             self.offset = 0;
@@ -179,10 +179,7 @@ impl<'a> Printer<'a> {
         let hl = match args.last().and_then(|x| x.as_array().unwrap().last()) {
             Some(a) => a.as_map().unwrap(),
             None => {
-                // self.hl = self.default_hl.clone();
-                self.hl.fg = self.default_hl.fg.clone();
-                self.hl.bg = self.default_hl.bg.clone();
-                self.hl.attrs = self.default_hl.attrs;
+                self.hl = self.default_hl.clone();
                 return
             },
         };
@@ -320,7 +317,9 @@ fn main() {
             ErrorKind::BrokenPipe => (),
             _ => { panic!("{:?}", e); }
         }
+    } else {
+        let _ = std::io::stdout().write(b"\x1b[0m");
+        let _ = std::io::stdout().flush();
     }
 
-    print!("{}", RESET);
 }
