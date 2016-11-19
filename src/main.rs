@@ -2,6 +2,7 @@ extern crate rmp;
 extern crate rmp_serde;
 extern crate serde;
 
+use std::io::{stdout, stderr, Write, Error, ErrorKind};
 use std::cell::RefCell;
 use std::process::{Command, Stdio, ChildStdout, ChildStdin};
 use std::collections::BTreeMap;
@@ -100,9 +101,9 @@ impl<'a> Printer<'a> {
         self.nvim_command(format!("normal {}z\n", line).as_str());
     }
 
-    fn handle_put(&mut self, args: &[rmp::Value]) {
+    fn handle_put(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
         if self.eof || self.modeline {
-            return
+            return Ok(());
         }
 
         let eofstr = format!("~{1:0$}", WIDTH - 1, "");
@@ -120,21 +121,24 @@ impl<'a> Printer<'a> {
             self.quit();
             self.eof = true;
         } else {
-            print!("{default_hl}{1:0$}{hl}{string}",
-                self.offset, "",
-                string=string,
-                hl=self.hl.to_string(),
-                default_hl=self.default_hl.to_string(),
-            );
+            if self.offset != 0 {
+                stdout().write(self.default_hl.to_string().as_bytes())?;
+                write!(&mut stdout(), "{1:0$}", self.offset, "")?;
+            }
+            stdout().write(self.hl.to_string().as_bytes())?;
+            stdout().write(string.as_bytes())?;
+
             self.cursor[1] += self.offset + string.len();
             self.offset = 0;
         }
+
+        Ok(())
     }
 
-    fn handle_cursor_goto(&mut self, args: &[rmp::Value]) {
+    fn handle_cursor_goto(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
         let pos = match args.last() {
             Some(a) => a.as_array().unwrap(),
-            None => return
+            None => return Ok(())
         };
 
         let row = pos[0].as_u64().unwrap() as usize;
@@ -151,23 +155,24 @@ impl<'a> Printer<'a> {
 
             self.cursor = [0, 0];
             self.offset = 0;
-            if !self.eof {
-                println!("{}", self.default_hl.to_string());
-            }
 
         } else if row == self.cursor[0]+1 {
             // new line
-            if !self.eof {
-                println!("{}", self.default_hl.to_string());
-            }
             self.cursor = [row, 0];
 
         } else if row == self.cursor[0] && col > self.cursor[1] {
             // moved right on same line
             self.offset -= self.cursor[1];
             self.cursor[0] = row;
+            return Ok(())
 
         }
+
+        if !self.eof {
+            stdout().write(self.default_hl.to_string().as_bytes())?;
+            stdout().write(b"\n")?;
+        }
+        Ok(())
     }
 
     fn handle_highlight_set(&mut self, args: &[rmp::Value]) {
@@ -228,15 +233,15 @@ impl<'a> Printer<'a> {
         self.hl.attrs = attrs;
     }
 
-    fn handle_update(&mut self, update: &rmp::Value) {
+    fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
         let update = update.as_array().unwrap();
         // println!("\n{:?}", update);
         match update[0].as_str().unwrap() {
             "put" => {
-                self.handle_put(&update[1..]);
+                self.handle_put(&update[1..])?;
             },
             "cursor_goto" => {
-                self.handle_cursor_goto(&update[1..]);
+                self.handle_cursor_goto(&update[1..])?;
             },
             "highlight_set" => {
                 self.handle_highlight_set(&update[1..]);
@@ -259,9 +264,11 @@ impl<'a> Printer<'a> {
             },
             _ => (),
         }
+
+        Ok(())
     }
 
-    pub fn run_loop(&mut self) {
+    pub fn run_loop(&mut self) -> Result<(), Error> {
         while !self.eof {
             let value : rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer).unwrap();
             let value = value.as_array().unwrap();
@@ -272,7 +279,7 @@ impl<'a> Printer<'a> {
                     if method == "redraw" {
                         let params = value[2].as_array().unwrap();
                         for update in params {
-                            self.handle_update(update);
+                            self.handle_update(update)?;
                         }
                     }
                 },
@@ -282,6 +289,7 @@ impl<'a> Printer<'a> {
                 _ => (),
             }
         }
+        Ok(())
     }
 }
 
@@ -306,6 +314,13 @@ fn main() {
 
     let mut printer = Printer::new(&mut stdin, stdout);
     printer.attach();
-    printer.run_loop();
+
+    if let Err(e) = printer.run_loop() {
+        match e.kind() {
+            ErrorKind::BrokenPipe => (),
+            _ => { panic!("{:?}", e); }
+        }
+    }
+
     print!("{}", RESET);
 }
