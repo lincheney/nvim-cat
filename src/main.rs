@@ -8,14 +8,16 @@ use std::collections::BTreeMap;
 use rmp_serde::{Serializer, Deserializer};
 use serde::{Serialize, Deserialize};
 
-const HEIGHT : u64 = 100;
-const WIDTH : u64 = 100;
+const HEIGHT : usize = 100;
+const WIDTH : usize = 100;
 
 struct Printer<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     Serializer<'a, rmp_serde::encode::StructArrayWriter>,
-    cursor:         [u64; 2],
+    cursor:         [usize; 2],
     eof:            bool,
+    modeline:       bool,
+    offset:         usize,
 }
 
 impl<'a> Printer<'a> {
@@ -27,6 +29,8 @@ impl<'a> Printer<'a> {
             deserializer: deserializer,
             cursor: [0, 0],
             eof: false,
+            modeline: false,
+            offset: 0,
         }
     }
 
@@ -42,12 +46,18 @@ impl<'a> Printer<'a> {
         value.serialize(&mut self.serializer).unwrap();
     }
 
+    fn scroll(&mut self, line: usize) {
+        let command = format!("normal {}z\n", line);
+        let value = ( 0, 300, "nvim_command", (command,) );
+        value.serialize(&mut self.serializer).unwrap();
+    }
+
     fn handle_put(&mut self, args: &[rmp::Value]) {
-        if self.eof || self.cursor[0] < 1 {
+        if self.eof || self.modeline {
             return
         }
 
-        let eofstr = format!("~{1:0$}", (WIDTH-1) as usize, "");
+        let eofstr = format!("~{1:0$}", WIDTH - 1, "");
 
         let parts : Vec<_> = args
             .iter()
@@ -56,13 +66,15 @@ impl<'a> Printer<'a> {
             .collect()
             ;
         let string = parts.join("");
+        // println!("{:?} {}", string, self.offset);
 
         if string == eofstr {
             self.quit();
             self.eof = true;
         } else {
-            print!("{}", string);
-            self.cursor[1] += string.len() as u64;
+            print!("{1:0$}{2}", self.offset, "", string);
+            self.cursor[1] += self.offset + string.len();
+            self.offset = 0;
         }
     }
 
@@ -72,18 +84,34 @@ impl<'a> Printer<'a> {
             None => return
         };
 
-        let row = pos[0].as_u64().unwrap();
-        let col = pos[1].as_u64().unwrap();
+        let row = pos[0].as_u64().unwrap() as usize;
+        let col = pos[1].as_u64().unwrap() as usize;
+        self.modeline = false;
+        self.offset = col;
 
+        // println!("{:?}--{:?}", (row, col), self.cursor);
         if row >= HEIGHT - 2 {
-        } else if row == self.cursor[0]+1 && col == 0 {
-            if !self.eof && self.cursor[0] != 0 {
+            // end of page, jumped to modelines
+            self.modeline = true;
+            self.scroll(HEIGHT - 1);
+            self.cursor = [0, 0];
+            self.offset = 0;
+            if !self.eof {
                 println!("");
             }
-            self.cursor = [row, col];
+
+        } else if row == self.cursor[0]+1 {
+            // new line
+            if !self.eof {
+                println!("");
+            }
+            self.cursor = [row, 0];
+
         } else if row == self.cursor[0] && col > self.cursor[1] {
-            print!("{1:0$}", (col - self.cursor[1]) as usize, "");
-            self.cursor = [row, col];
+            // moved right on same line
+            self.offset -= self.cursor[1];
+            self.cursor[0] = row;
+
         }
     }
 
@@ -129,8 +157,11 @@ fn main() {
     let process = Command::new("nvim")
         .arg("--embed")
         .arg("-nR")
+        .arg("+0")
+        .arg("-c").arg("set scrolloff=0 mouse= showtabline=0")
         .arg("--")
-        .arg("Cargo.toml")
+        // .arg("Cargo.toml")
+        .arg("src/main.rs")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
