@@ -37,7 +37,7 @@ impl<'a> Printer<'a> {
     pub fn attach(&mut self) {
         let mut kwargs = BTreeMap::new();
         kwargs.insert("rgb", true);
-        let value = ( 0, 100, "nvim_ui_attach", (HEIGHT, WIDTH, kwargs) );
+        let value = ( 0, 100, "nvim_ui_attach", (WIDTH, HEIGHT, kwargs) );
         value.serialize(&mut self.serializer).unwrap();
     }
 
