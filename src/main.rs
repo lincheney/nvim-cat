@@ -11,6 +11,7 @@ use serde::{Serialize, Deserialize};
 
 const HEIGHT : usize = 100;
 const WIDTH : usize = 100;
+const RESET : &'static str = "\x1b[0m";
 
 enum Attr {
     BOLD = 1,
@@ -306,4 +307,5 @@ fn main() {
     let mut printer = Printer::new(&mut stdin, stdout);
     printer.attach();
     printer.run_loop();
+    print!("{}", RESET);
 }
