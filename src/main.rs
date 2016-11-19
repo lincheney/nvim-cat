@@ -169,7 +169,7 @@ impl<'a> Printer<'a> {
 
         if !self.eof {
             stdout().write(self.default_hl.to_string().as_bytes())?;
-            stdout().write(b"\n")?;
+            stdout().write(b"\x1b[K\n")?;
         }
         Ok(())
     }
@@ -317,7 +317,7 @@ fn main() {
             _ => { panic!("{:?}", e); }
         }
     } else {
-        let _ = std::io::stdout().write(b"\x1b[0m");
+        let _ = std::io::stdout().write(b"\x1b[0m\x1b[K");
         let _ = std::io::stdout().flush();
     }
 
