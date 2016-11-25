@@ -10,46 +10,10 @@ use std::collections::BTreeMap;
 use rmp_serde::{Serializer, Deserializer};
 use serde::{Serialize, Deserialize};
 
+mod highlight;
+
 const HEIGHT : usize = 100;
 const WIDTH : usize = 100;
-
-enum Attr {
-    BOLD = 1,
-    ITALIC = 2,
-    UNDERLINE = 4,
-    REVERSE = 8,
-}
-
-#[derive(Debug, Clone)]
-struct Highlight {
-    fg: String,
-    bg: String,
-    attrs: u8,
-}
-
-impl Highlight {
-    pub fn new() -> Self {
-        Highlight{ fg: "255;255;255".to_string(), bg: "0;0;0".to_string(), attrs: 0 }
-    }
-
-    pub fn rgb_to_string(val: u32) -> String {
-        format!("{};{};{}",
-            val >> 16,
-            (val & 0x00ff00) >> 8,
-            val & 0xff,
-        )
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("\x1b[0;{bold}{italic}{underline}38;2;{fg};48;2;{bg}m",
-            bold = if self.attrs & (Attr::BOLD as u8) != 0 { "1;" } else { "" },
-            italic = if self.attrs & (Attr::ITALIC as u8) != 0 { "3;" } else { "" },
-            underline = if self.attrs & (Attr::UNDERLINE as u8) != 0 { "4;" } else { "" },
-            fg = if self.attrs & (Attr::REVERSE as u8) == 0 { &self.fg } else { &self.bg },
-            bg = if self.attrs & (Attr::REVERSE as u8) == 0 { &self.bg } else { &self.fg },
-        )
-    }
-}
 
 struct Printer<'a> {
     deserializer:   Deserializer<ChildStdout>,
@@ -58,8 +22,8 @@ struct Printer<'a> {
     eof:            bool,
     modeline:       bool,
     offset:         usize,
-    hl:             Highlight,
-    default_hl:     Highlight,
+    hl:             highlight::Highlight,
+    default_hl:     highlight::Highlight,
 }
 
 impl<'a> Printer<'a> {
@@ -73,8 +37,8 @@ impl<'a> Printer<'a> {
             eof: false,
             modeline: false,
             offset: 0,
-            hl: Highlight::new(),
-            default_hl: Highlight::new(),
+            hl: highlight::Highlight::new(),
+            default_hl: highlight::Highlight::new(),
         }
     }
 
@@ -188,26 +152,26 @@ impl<'a> Printer<'a> {
         let mut attrs = self.default_hl.attrs;
 
         for &(ref key, ref value) in hl.iter() {
-            let mut bit : Option<Attr> = None;
+            let mut bit : Option<highlight::Attr> = None;
 
             match key.as_str().unwrap() {
                 "foreground" => {
-                    fg = Some( Highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
+                    fg = Some( highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
                 },
                 "background" => {
-                    bg = Some( Highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
+                    bg = Some( highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
                 },
                 "reverse" => {
-                    bit = Some(Attr::REVERSE);
+                    bit = Some(highlight::Attr::REVERSE);
                 }
                 "bold" => {
-                    bit = Some(Attr::BOLD);
+                    bit = Some(highlight::Attr::BOLD);
                 },
                 "italic" => {
-                    bit = Some(Attr::ITALIC);
+                    bit = Some(highlight::Attr::ITALIC);
                 },
                 "underline" => {
-                    bit = Some(Attr::UNDERLINE);
+                    bit = Some(highlight::Attr::UNDERLINE);
                 },
                 _ => (),
             }
@@ -245,7 +209,7 @@ impl<'a> Printer<'a> {
             "update_fg" => {
                 match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
                     Some(x) => {
-                        self.default_hl.fg = Highlight::rgb_to_string(x.as_u64().unwrap() as u32);
+                        self.default_hl.fg = highlight::rgb_to_string(x.as_u64().unwrap() as u32);
                     },
                     None => ()
                 };
@@ -253,7 +217,7 @@ impl<'a> Printer<'a> {
             "update_bg" => {
                 match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
                     Some(x) => {
-                        self.default_hl.bg = Highlight::rgb_to_string(x.as_u64().unwrap() as u32);
+                        self.default_hl.bg = highlight::rgb_to_string(x.as_u64().unwrap() as u32);
                     },
                     None => ()
                 };
