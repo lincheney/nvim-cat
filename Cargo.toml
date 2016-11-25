@@ -7,3 +7,4 @@ authors = ["Cheney Lin <lincheney@gmail.com>"]
 serde = "~ 0.8"
 rmp = "~ 0.7"
 rmp-serde = "0.10"
+mio = "~ 0.6"
