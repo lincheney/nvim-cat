@@ -44,8 +44,8 @@ pub struct Nvim<'a> {
 }
 
 impl<'a> Nvim<'a> {
-    pub fn start_process(file: &str) -> Child {
-        let command = format!("set scrolloff=0 mouse= showtabline=0 | doautocmd BufRead {} | NoMatchParen", file);
+    pub fn start_process() -> Child {
+        let command = format!("set scrolloff=0 mouse= showtabline=0 | NoMatchParen");
         Command::new("nvim")
             .arg("--embed")
             .arg("-nZ")

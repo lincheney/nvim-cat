@@ -13,6 +13,9 @@ mod epoll;
 fn dump_file(file: &str, poller: &mut epoll::Poller, nvim: &mut nvim::Nvim, stdout_fd: RawFd) {
     let file = if file == "-" { "/dev/stdin" } else { file };
     println!("{}", file);
+
+    nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file)).unwrap();
+
     let file = File::open(file).unwrap();
     let stdin_fd = file.as_raw_fd();
 
@@ -80,7 +83,7 @@ fn main() {
 
     let mut poller = epoll::Poller::new(2);
 
-    let process = nvim::Nvim::start_process("src/main.rs");
+    let process = nvim::Nvim::start_process();
     let stdout = process.stdout.unwrap();
     let stdout_fd = stdout.as_raw_fd();
     let mut stdin = process.stdin.unwrap();
