@@ -5,7 +5,7 @@ mod nvim;
 mod epoll;
 
 use std::fs::File;
-use std::io::{Read, BufRead, Write};
+use std::io::{Read, BufRead};
 use std::os::unix::io::AsRawFd;
 
 fn main() {

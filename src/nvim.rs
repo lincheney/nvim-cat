@@ -29,17 +29,18 @@ pub struct Nvim<'a> {
     pub state:      usize,
     hl:             highlight::Highlight,
     default_hl:     highlight::Highlight,
+    first_buffer:   String,
+    first_offset:   usize,
 }
 
 impl<'a> Nvim<'a> {
     pub fn start_process(file: &str) -> Child {
+        let command = format!("set scrolloff=0 mouse= showtabline=0 | doautocmd BufRead {} | NoMatchParen", file);
         Command::new("nvim")
             .arg("--embed")
             .arg("-nZ")
             .arg("+0")
-            .arg("-c").arg("set scrolloff=0 mouse= showtabline=0 | doautocmd BufRead Cargo.toml | NoMatchParen")
-            // .arg("--")
-            // .arg(file)
+            .arg("-c").arg(command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
@@ -59,6 +60,8 @@ impl<'a> Nvim<'a> {
             offset: 0,
             hl: highlight::Highlight::new(),
             default_hl: highlight::Highlight::new(),
+            first_buffer: String::new(),
+            first_offset: 0,
         }
     }
 
@@ -88,7 +91,7 @@ impl<'a> Nvim<'a> {
 
     pub fn add_lines(&mut self, lines: &[&str]) -> Result<(), self::rmp_serde::encode::Error> {
         // println!("{:?}", lines);
-        let value = ( 0, 100, "nvim_buf_set_lines", (1, -1, -1, false, lines) );
+        let value = ( 0, 100, "nvim_buf_set_lines", (1, self.expected_line, -1, false, lines) );
         self.expected_line += lines.len();
         value.serialize(&mut *self.serializer.borrow_mut())
     }
@@ -99,17 +102,26 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
+    fn handle_put_first_draw(&mut self, string: String) -> Result<(), Error> {
+        if self.cursor[0] == 0 {
+            self.first_offset += self.offset + string.len();
+            let string = format!("{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string);
+            self.first_buffer += &string;
+        }
+        Ok(())
+    }
+
     fn handle_put(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
-        if self.state & MODELINE != 0 {
+        if !self.state & (FIRST_DRAW | MODELINE) == 0 {
             // hit modeline, finished first draw
             self.state &= ! FIRST_DRAW;
+            stdout().write(self.first_buffer.as_bytes())?;
+            self.cursor[1] += self.first_offset;
         }
 
-        if self.state & (FIRST_DRAW | MODELINE | FINISHED) != 0 || self.expected_line < self.cursor[0] {
-            return Ok(());
+        if self.state & (MODELINE | FINISHED) != 0 || self.expected_line <= self.cursor[0] {
+            return Ok(())
         }
-
-        let eofstr = format!("~{1:0$}", WIDTH - 1, "");
 
         let parts : Vec<_> = args
             .iter()
@@ -118,20 +130,21 @@ impl<'a> Nvim<'a> {
             .collect()
             ;
         let string = parts.join("");
-        // println!("{} {:?} {}", self.expected_line, string, self.offset);
 
-        if string != eofstr || true {
-            if self.offset != 0 {
-                stdout().write(self.default_hl.to_string().as_bytes())?;
-                write!(&mut stdout(), "{1:0$}", self.offset, "")?;
+        let eofstr = format!("~{1:0$}", WIDTH - 1, "");
+
+        if string != eofstr {
+            if self.state & FIRST_DRAW != 0 {
+                return self.handle_put_first_draw(string)
             }
-            stdout().write(self.hl.to_string().as_bytes())?;
-            stdout().write(string.as_bytes())?;
+            // let string = format!("{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string);
+            // stdout().write(string.as_bytes())?;
+            write!(stdout(), "{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string)?;
             stdout().flush()?;
-
             self.cursor[1] += self.offset + string.len();
             self.offset = 0;
         }
+        // println!("{} {:?} {}", self.expected_line, string, self.offset);
 
         Ok(())
     }
@@ -147,8 +160,8 @@ impl<'a> Nvim<'a> {
         self.state &= ! MODELINE;
         self.offset = col;
 
-        // println!("{:?}--{:?}#{}", (row, col), self.cursor, self.expected_line);
-        if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor[0] && row != self.cursor[0] {
+        // println!("{:?}--{:?}#{}#{}", (row, col), self.cursor, self.offset, self.expected_line);
+        if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor[0]+1 && row != self.cursor[0] {
             self.quit().unwrap();
             self.state |= FINISHED;
             return self.print_newline()
@@ -159,7 +172,6 @@ impl<'a> Nvim<'a> {
             self.state |= MODELINE;
             if (self.state & FIRST_DRAW) == 0 {
                 self.scroll(HEIGHT - 2).unwrap();
-
             }
             self.cursor = [0, 0];
             self.offset = 0;
@@ -172,10 +184,9 @@ impl<'a> Nvim<'a> {
             // new line
             self.cursor = [row, 0];
 
-        } else if row == self.cursor[0] && col > self.cursor[1] {
+        } else if row == self.cursor[0] && col >= self.cursor[1] {
             // moved right on same line
             self.offset -= self.cursor[1];
-            self.cursor[0] = row;
             return Ok(())
 
         } else {
