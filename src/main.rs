@@ -1,288 +1,113 @@
-extern crate rmp;
-extern crate rmp_serde;
-extern crate serde;
-
-use std::io::{stdout, Write, Error, ErrorKind};
-use std::cell::RefCell;
-use std::process::{Command, Stdio, ChildStdout, ChildStdin};
-use std::collections::BTreeMap;
-
-use rmp_serde::{Serializer, Deserializer};
-use serde::{Serialize, Deserialize};
+extern crate libc;
 
 mod highlight;
+mod nvim;
+mod epoll;
 
-const HEIGHT : usize = 100;
-const WIDTH : usize = 100;
-
-struct Printer<'a> {
-    deserializer:   Deserializer<ChildStdout>,
-    serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
-    cursor:         [usize; 2],
-    eof:            bool,
-    modeline:       bool,
-    offset:         usize,
-    hl:             highlight::Highlight,
-    default_hl:     highlight::Highlight,
-}
-
-impl<'a> Printer<'a> {
-    pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout) -> Self {
-        let serializer = Serializer::new(stdin);
-        let deserializer = Deserializer::new(stdout);
-        Printer {
-            deserializer: deserializer,
-            serializer: RefCell::new(serializer),
-            cursor: [0, 0],
-            eof: false,
-            modeline: false,
-            offset: 0,
-            hl: highlight::Highlight::new(),
-            default_hl: highlight::Highlight::new(),
-        }
-    }
-
-    pub fn nvim_command(&self, command: &str) {
-        let value = ( 0, 300, "nvim_command", (command,) );
-        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
-    }
-
-    pub fn attach(&self) {
-        let mut kwargs = BTreeMap::new();
-        kwargs.insert("rgb", true);
-        let value = ( 0, 100, "nvim_ui_attach", (WIDTH, HEIGHT, kwargs) );
-        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
-    }
-
-    pub fn quit(&self) {
-        self.nvim_command("qa!");
-    }
-
-    fn scroll(&self, down: usize) {
-        self.nvim_command(format!("normal {}gjz\n", down).as_str());
-    }
-
-    fn handle_put(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
-        if self.eof || self.modeline {
-            return Ok(());
-        }
-
-        let eofstr = format!("~{1:0$}", WIDTH - 1, "");
-
-        let parts : Vec<_> = args
-            .iter()
-            .flat_map(|x| x.as_array().unwrap())
-            .map(|x| x.as_str().unwrap())
-            .collect()
-            ;
-        let string = parts.join("");
-        // println!("{:?} {}", string, self.offset);
-
-        if string == eofstr {
-            self.quit();
-            self.eof = true;
-        } else {
-            if self.offset != 0 {
-                stdout().write(self.default_hl.to_string().as_bytes())?;
-                write!(&mut stdout(), "{1:0$}", self.offset, "")?;
-            }
-            stdout().write(self.hl.to_string().as_bytes())?;
-            stdout().write(string.as_bytes())?;
-            stdout().flush()?;
-
-            self.cursor[1] += self.offset + string.len();
-            self.offset = 0;
-        }
-
-        Ok(())
-    }
-
-    fn handle_cursor_goto(&mut self, args: &[rmp::Value]) -> Result<(), Error> {
-        let pos = match args.last() {
-            Some(a) => a.as_array().unwrap(),
-            None => return Ok(())
-        };
-
-        let row = pos[0].as_u64().unwrap() as usize;
-        let col = pos[1].as_u64().unwrap() as usize;
-        self.modeline = false;
-        self.offset = col;
-
-        // println!("{:?}--{:?}", (row, col), self.cursor);
-        if row >= HEIGHT - 2 {
-            // end of page, jumped to modelines
-            self.modeline = true;
-            self.scroll(HEIGHT - 2);
-
-            self.cursor = [0, 0];
-            self.offset = 0;
-
-        } else if row == self.cursor[0]+1 {
-            // new line
-            self.cursor = [row, 0];
-
-        } else if row == self.cursor[0] && col > self.cursor[1] {
-            // moved right on same line
-            self.offset -= self.cursor[1];
-            self.cursor[0] = row;
-            return Ok(())
-
-        } else {
-            return Ok(())
-        }
-
-        if !self.eof {
-            stdout().write(self.default_hl.to_string().as_bytes())?;
-            stdout().write(b"\x1b[K\n")?;
-        }
-        Ok(())
-    }
-
-    fn handle_highlight_set(&mut self, args: &[rmp::Value]) {
-        let hl = match args.last().and_then(|x| x.as_array().unwrap().last()) {
-            Some(a) => a.as_map().unwrap(),
-            None => {
-                self.hl = self.default_hl.clone();
-                return
-            },
-        };
-
-        let mut fg : Option<String> = None;
-        let mut bg : Option<String> = None;
-        let mut attrs = self.default_hl.attrs;
-
-        for &(ref key, ref value) in hl.iter() {
-            let mut bit : Option<highlight::Attr> = None;
-
-            match key.as_str().unwrap() {
-                "foreground" => {
-                    fg = Some( highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
-                },
-                "background" => {
-                    bg = Some( highlight::rgb_to_string(value.as_u64().unwrap() as u32) );
-                },
-                "reverse" => {
-                    bit = Some(highlight::Attr::REVERSE);
-                }
-                "bold" => {
-                    bit = Some(highlight::Attr::BOLD);
-                },
-                "italic" => {
-                    bit = Some(highlight::Attr::ITALIC);
-                },
-                "underline" => {
-                    bit = Some(highlight::Attr::UNDERLINE);
-                },
-                _ => (),
-            }
-
-            match bit {
-                Some(bit) => {
-                    if value.as_bool().unwrap() {
-                        attrs |= bit as u8;
-                    } else {
-                        attrs &= !( bit as u8 );
-                    }
-                },
-                None => (),
-            }
-        }
-
-        self.hl.fg = fg.unwrap_or_else(|| self.default_hl.fg.clone());
-        self.hl.bg = bg.unwrap_or_else(|| self.default_hl.bg.clone());
-        self.hl.attrs = attrs;
-    }
-
-    fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
-        let update = update.as_array().unwrap();
-        // println!("\n{:?}", update);
-        match update[0].as_str().unwrap() {
-            "put" => {
-                self.handle_put(&update[1..])?;
-            },
-            "cursor_goto" => {
-                self.handle_cursor_goto(&update[1..])?;
-            },
-            "highlight_set" => {
-                self.handle_highlight_set(&update[1..]);
-            },
-            "update_fg" => {
-                match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
-                    Some(x) => {
-                        self.default_hl.fg = highlight::rgb_to_string(x.as_u64().unwrap() as u32);
-                    },
-                    None => ()
-                };
-            },
-            "update_bg" => {
-                match update[1..].last().and_then(|x| x.as_array().unwrap().last()) {
-                    Some(x) => {
-                        self.default_hl.bg = highlight::rgb_to_string(x.as_u64().unwrap() as u32);
-                    },
-                    None => ()
-                };
-            },
-            _ => (),
-        }
-
-        Ok(())
-    }
-
-    pub fn run_loop(&mut self) -> Result<(), Error> {
-        while !self.eof {
-            let value : rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer).unwrap();
-            let value = value.as_array().unwrap();
-            match value[0].as_u64().unwrap() {
-                2 => {
-                    // notification
-                    let method = value[1].as_str().unwrap();
-                    if method == "redraw" {
-                        let params = value[2].as_array().unwrap();
-                        for update in params {
-                            self.handle_update(update)?;
-                        }
-                    }
-                },
-                1 => {
-                    // response
-                },
-                _ => (),
-            }
-        }
-        Ok(())
-    }
-}
-
+use std::fs::File;
+use std::io::{Read, BufRead, Write};
+use std::os::unix::io::AsRawFd;
 
 fn main() {
-    let process = Command::new("nvim")
-        .arg("--embed")
-        .arg("-nRZ")
-        .arg("+0")
-        .arg("-c").arg("set scrolloff=0 mouse= showtabline=0")
-        .arg("--")
-        // .arg("Cargo.toml")
-        .arg("src/main.rs")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("could not find nvim")
-        ;
+    let mut poller = epoll::Poller::new(2);
 
+    let process = nvim::Nvim::start_process("src/main.rs");
     let stdout = process.stdout.unwrap();
+    let stdout_fd = stdout.as_raw_fd();
     let mut stdin = process.stdin.unwrap();
+    let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
+    poller.add_fd(stdout_fd).unwrap();
+    nvim.attach().unwrap();
 
-    let mut printer = Printer::new(&mut stdin, stdout);
-    printer.attach();
+    let file = File::open("/dev/stdin").unwrap();
+    let stdin_fd = file.as_raw_fd();
+    poller.add_fd(stdin_fd).unwrap();
+    let mut reader = std::io::BufReader::new(file);
 
-    if let Err(e) = printer.run_loop() {
-        match e.kind() {
-            ErrorKind::BrokenPipe => (),
-            _ => { panic!("{:?}", e); }
+    let num_fds = 2;
+    let mut buf = String::new();
+
+    while num_fds > 0 {
+        match poller.next(-1) {
+            Some(fd) if fd == stdout_fd => {
+                if nvim.process_event().unwrap() {
+                    poller.del_fd(fd).unwrap();
+                    break;
+                }
+            },
+
+            Some(fd) if fd == stdin_fd => {
+                buf.clear();
+                if reader.read_line(&mut buf).unwrap() > 0 {
+                    nvim.add_lines(&[&buf.trim_right_matches("\n")]).unwrap();
+                    // println!("{}", buf);
+                } else {
+                    poller.del_fd(fd).unwrap();
+                    nvim.set_eof();
+                }
+            },
+
+            Some(_) => unreachable!(),
+            None => (),
         }
-    } else {
-        let _ = std::io::stdout().write(b"\x1b[0m\x1b[K");
-        let _ = std::io::stdout().flush();
     }
+    return;
+    // use mio::*;
+
+    // Setup the server socket
+    // let mut file1 = File::open("/dev/stdin").unwrap();
+    // let mut file2 = File::open(std::env::args().nth(1).unwrap()).unwrap();
+    // let fd1 = file1.as_raw_fd();
+    // let fd2 = file2.as_raw_fd();
+    // // let mut reader1 = std::io::BufReader::new(file1);
+    // // let mut reader2 = std::io::BufReader::new(file2);
+//
+    // unsafe {
+    // let mut flags = libc::fcntl(fd1, libc::F_GETFD);
+    // // println!("{}", flags);
+    // // flags |= libc::O_NONBLOCK;
+    // libc::fcntl(fd1, libc::F_SETFD, flags);
+    // }
+//
+    // // epoll::ctl(epollfd, libc::EPOLL_CTL_ADD, fd1, libc::EPOLLIN as u32).unwrap();
+    // // epoll::ctl(epollfd, libc::EPOLL_CTL_ADD, fd2, libc::EPOLLIN as u32).unwrap();
+//
+    // // let mut buf = String::new();
+    // let mut buf = [0; 1024];
+    // let mut mapping: HashMap<RawFd, File> = HashMap::new();
+    // poller.add_file(&file1).unwrap();
+    // poller.add_file(&file2).unwrap();
+    // mapping.insert(fd1, file1);
+    // mapping.insert(fd2, file2);
+//
+    // while ! mapping.is_empty() {
+        // let fd = poller.next(0);
+        // if fd.is_none() {
+            // break;
+        // }
+//
+        // // buf.clear();
+        // let fd = fd.unwrap();
+        // let mut remove = false;
+        // match mapping.get_mut(&fd) {
+            // None => (),
+            // Some(file) => {
+                // if file.read(&mut buf).unwrap() > 0 {
+                    // std::io::stdout().write(b"1: ");
+                    // std::io::stdout().write(&buf);
+                    // std::io::stdout().write(b"\n");
+                    // std::io::stdout().flush();
+                // } else {
+                    // remove = true;
+                // }
+            // }
+        // }
+//
+        // if remove {
+            // println!("deleted {}", fd);
+            // poller.del_fd(fd).unwrap();
+            // mapping.remove(&fd);
+        // }
+    // }
 
 }
