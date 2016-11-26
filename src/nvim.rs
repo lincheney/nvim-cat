@@ -15,11 +15,13 @@ use highlight;
 const HEIGHT: usize = 100;
 const WIDTH: usize = 100;
 const TEXT_HEIGHT: usize = HEIGHT - 2;
+const BUFNUM: usize = 1;
 
 const FIRST_DRAW: usize = 1;
 const MODELINE: usize = 2;
 const EOF: usize = 4;
 const FINISHED: usize = 8;
+const CLEARING: usize = 16;
 
 #[derive(Debug)]
 struct Cursor {
@@ -64,7 +66,7 @@ impl<'a> Nvim<'a> {
             serializer: RefCell::new(serializer),
             cursor: Cursor{row: 0, col: 0, real_row: 0},
             expected_line: 0,
-            state: FIRST_DRAW,
+            state: CLEARING,
             offset: 0,
             hl: highlight::Highlight::new(),
             default_hl: highlight::Highlight::new(),
@@ -75,6 +77,17 @@ impl<'a> Nvim<'a> {
 
     pub fn set_eof(&mut self) {
         self.state |= EOF;
+    }
+
+    pub fn reset(&mut self) {
+        self.cursor = Cursor{row: 0, col: 0, real_row: 0};
+        self.expected_line = 0;
+        self.state = CLEARING;
+        self.offset = 0;
+        self.buffer.clear();
+        self.buffer_offset = 0;
+        self.add_lines(&[], 0).unwrap();
+        self.nvim_command("redraw!").unwrap();
     }
 
     pub fn nvim_command(&self, command: &str) -> Result<(), self::rmp_serde::encode::Error> {
@@ -98,7 +111,7 @@ impl<'a> Nvim<'a> {
     }
 
     pub fn add_lines(&mut self, lines: &[&str], incr: usize) -> Result<(), self::rmp_serde::encode::Error> {
-        let value = ( 0, 100, "nvim_buf_set_lines", (1, self.expected_line, -1, false, lines) );
+        let value = ( 0, 100, "nvim_buf_set_lines", (BUFNUM, self.expected_line, -1, false, lines) );
         self.expected_line += incr;
         value.serialize(&mut *self.serializer.borrow_mut())
     }
@@ -137,6 +150,9 @@ impl<'a> Nvim<'a> {
             }
 
             if ! self.buffer.is_empty() {
+                if self.offset < self.buffer_offset {
+                    println!("{}", self.buffer);
+                }
                 assert!(self.offset >= self.buffer_offset);
                 assert_eq!(self.cursor.col, 0);
                 stdout().write(self.buffer.as_bytes())?;
@@ -168,7 +184,7 @@ impl<'a> Nvim<'a> {
 
         // println!("{:?}--{:?}#{}#{}", (row, col), self.cursor, self.offset, self.expected_line);
         if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor.real_row && row != self.cursor.row {
-            self.quit().unwrap();
+            // self.quit().unwrap();
             self.state |= FINISHED;
             return Ok(())
         }
@@ -277,7 +293,16 @@ impl<'a> Nvim<'a> {
     fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
         let update = update.as_array().unwrap();
         // println!("\n{:?}", update);
-        match update[0].as_str().unwrap() {
+        let key = update[0].as_str().unwrap();
+        if self.state & CLEARING != 0 {
+            if key == "clear" {
+                self.state |= FIRST_DRAW;
+                self.state &= ! CLEARING;
+            }
+            return Ok(())
+        }
+
+        match key {
             "put" => {
                 self.handle_put(&update[1..])?;
             },

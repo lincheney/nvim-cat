@@ -55,6 +55,8 @@ fn dump_file(file: &str, poller: &mut epoll::Poller, nvim: &mut nvim::Nvim, stdo
             }
         }
     }
+
+    nvim.reset();
 }
 
 fn main() {
@@ -89,4 +91,5 @@ fn main() {
     for &file in files.iter() {
         dump_file(file, &mut poller, &mut nvim, stdout_fd);
     }
+    nvim.quit().unwrap();
 }
