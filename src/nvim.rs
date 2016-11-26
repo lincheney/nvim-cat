@@ -111,7 +111,7 @@ impl<'a> Nvim<'a> {
     }
 
     pub fn add_lines(&mut self, lines: &[&str], incr: usize) -> Result<(), self::rmp_serde::encode::Error> {
-        let value = ( 0, 100, "nvim_buf_set_lines", (BUFNUM, self.expected_line, -1, false, lines) );
+        let value = ( 0, 200, "nvim_buf_set_lines", (BUFNUM, self.expected_line, -1, false, lines) );
         self.expected_line += incr;
         value.serialize(&mut *self.serializer.borrow_mut())
     }

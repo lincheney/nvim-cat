@@ -10,11 +10,25 @@ mod highlight;
 mod nvim;
 mod epoll;
 
-fn dump_file(file: &str, poller: &mut epoll::Poller, nvim: &mut nvim::Nvim, stdout_fd: RawFd) {
+fn dump_file(
+        file: &str,
+        poller: &mut epoll::Poller,
+        nvim: &mut nvim::Nvim,
+        stdout_fd: RawFd,
+        filetype: Option<&str>,
+        ) {
+
     let file = if file == "-" { "/dev/stdin" } else { file };
     println!("{}", file);
 
-    nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file)).unwrap();
+    match filetype {
+        Some(filetype) => {
+            nvim.nvim_command(&format!("set ft={}", filetype)).unwrap();
+        },
+        None => {
+            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file)).unwrap();
+        }
+    }
 
     let file = File::open(file).unwrap();
     let stdin_fd = file.as_raw_fd();
@@ -67,13 +81,20 @@ fn main() {
         .about("TODO")
         .arg(Arg::with_name("u")
              .short("u")
-             .value_name("<vimrc>")
+             .value_name("vimrc")
              .help("Use <vimrc> instead of the default")
+             .takes_value(true))
+        .arg(Arg::with_name("ft")
+             .short("f")
+             .long("-ft")
+             .value_name("ft")
+             .help("Set the filetype to <ft>")
              .takes_value(true))
         .arg(Arg::with_name("FILE")
              .multiple(true))
         .get_matches();
 
+    let filetype = matches.value_of("ft");
     let files = match matches.values_of("FILE") {
         Some(values) => {
             values.collect::<Vec<&str>>()
@@ -92,7 +113,7 @@ fn main() {
     nvim.attach().unwrap();
 
     for &file in files.iter() {
-        dump_file(file, &mut poller, &mut nvim, stdout_fd);
+        dump_file(file, &mut poller, &mut nvim, stdout_fd, filetype);
     }
     nvim.quit().unwrap();
 }
