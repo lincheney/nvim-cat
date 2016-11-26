@@ -12,18 +12,26 @@ use self::serde::{Serialize, Deserialize};
 
 use highlight;
 
-const HEIGHT : usize = 100;
-const WIDTH : usize = 100;
+const HEIGHT: usize = 100;
+const WIDTH: usize = 100;
+const TEXT_HEIGHT: usize = HEIGHT - 2;
 
 const FIRST_DRAW: usize = 1;
 const MODELINE: usize = 2;
 const EOF: usize = 4;
 const FINISHED: usize = 8;
 
+#[derive(Debug)]
+struct Cursor {
+    row: usize,
+    col: usize,
+    real_row: usize,
+}
+
 pub struct Nvim<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
-    cursor:         [usize; 2],
+    cursor:         Cursor,
     expected_line:  usize,
     offset:         usize,
     pub state:      usize,
@@ -54,7 +62,7 @@ impl<'a> Nvim<'a> {
         Nvim {
             deserializer: deserializer,
             serializer: RefCell::new(serializer),
-            cursor: [0, 0],
+            cursor: Cursor{row: 0, col: 0, real_row: 0},
             expected_line: 0,
             state: FIRST_DRAW,
             offset: 0,
@@ -90,7 +98,6 @@ impl<'a> Nvim<'a> {
     }
 
     pub fn add_lines(&mut self, lines: &[&str]) -> Result<(), self::rmp_serde::encode::Error> {
-        // println!("{:?}", lines);
         let value = ( 0, 100, "nvim_buf_set_lines", (1, self.expected_line, -1, false, lines) );
         self.expected_line += lines.len();
         value.serialize(&mut *self.serializer.borrow_mut())
@@ -103,7 +110,7 @@ impl<'a> Nvim<'a> {
     }
 
     fn handle_put_first_draw(&mut self, string: String) -> Result<(), Error> {
-        if self.cursor[0] == 0 {
+        if self.cursor.row == 0 {
             self.first_offset += self.offset + string.len();
             let string = format!("{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string);
             self.first_buffer += &string;
@@ -116,10 +123,10 @@ impl<'a> Nvim<'a> {
             // hit modeline, finished first draw
             self.state &= ! FIRST_DRAW;
             stdout().write(self.first_buffer.as_bytes())?;
-            self.cursor[1] += self.first_offset;
+            self.cursor.col += self.first_offset;
         }
 
-        if self.state & (MODELINE | FINISHED) != 0 || self.expected_line <= self.cursor[0] {
+        if self.state & (MODELINE | FINISHED) != 0 || self.expected_line <= self.cursor.real_row {
             return Ok(())
         }
 
@@ -137,11 +144,9 @@ impl<'a> Nvim<'a> {
             if self.state & FIRST_DRAW != 0 {
                 return self.handle_put_first_draw(string)
             }
-            // let string = format!("{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string);
-            // stdout().write(string.as_bytes())?;
             write!(stdout(), "{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string)?;
             stdout().flush()?;
-            self.cursor[1] += self.offset + string.len();
+            self.cursor.col += self.offset + string.len();
             self.offset = 0;
         }
         // println!("{} {:?} {}", self.expected_line, string, self.offset);
@@ -157,43 +162,54 @@ impl<'a> Nvim<'a> {
 
         let row = pos[0].as_u64().unwrap() as usize;
         let col = pos[1].as_u64().unwrap() as usize;
-        self.state &= ! MODELINE;
         self.offset = col;
+        let real_row = self.cursor.real_row + row - self.cursor.row;
 
         // println!("{:?}--{:?}#{}#{}", (row, col), self.cursor, self.offset, self.expected_line);
-        if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor[0]+1 && row != self.cursor[0] {
+        if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor.real_row+1 && row != self.cursor.row {
             self.quit().unwrap();
             self.state |= FINISHED;
             return self.print_newline()
         }
 
-        if row >= HEIGHT - 2 {
+        if row >= TEXT_HEIGHT {
             // end of page, jumped to modelines
-            self.state |= MODELINE;
-            if (self.state & FIRST_DRAW) == 0 {
-                self.scroll(HEIGHT - 2).unwrap();
-            }
-            self.cursor = [0, 0];
-            self.offset = 0;
-            return Ok(());
 
-        } else if (self.state & FIRST_DRAW) != 0 || self.expected_line < row {
+            // scroll + newline if neither first draw nor previously on modeline
+            if self.state & (FIRST_DRAW | MODELINE) == 0 {
+                self.scroll(TEXT_HEIGHT).unwrap();
+                self.print_newline()?;
+                self.cursor.real_row += 1;
+                self.cursor.row = 0;
+                self.cursor.col = 0;
+                self.offset = 0;
+            }
+
+            self.state |= MODELINE;
+            return Ok(());
+        }
+
+        self.state &= ! MODELINE;
+
+        if (self.state & FIRST_DRAW) != 0 || self.expected_line < real_row {
             return Ok(())
 
-        } else if row == self.cursor[0]+1 {
+        } else if row == self.cursor.row+1 {
             // new line
-            self.cursor = [row, 0];
+            self.cursor.real_row = real_row;
+            self.cursor.row = row;
+            self.cursor.col = 0;
 
-        } else if row == self.cursor[0] && col >= self.cursor[1] {
+        } else if row == self.cursor.row && col >= self.cursor.col {
             // moved right on same line
-            self.offset -= self.cursor[1];
+            self.offset -= self.cursor.col;
             return Ok(())
 
         } else {
             return Ok(())
         }
 
-        // println!("{:?}--{:?}", (row, col), self.cursor);
+        // println!("{:?}--{:?}#{}", (row, col), self.cursor, self.expected_line);
         if self.state & FIRST_DRAW == 0 {
             self.print_newline()?
         }
