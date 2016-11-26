@@ -2,7 +2,7 @@ extern crate rmp;
 extern crate rmp_serde;
 extern crate serde;
 
-use std::io::{stdout, Write, Error};
+use std::io::{stdout, stderr, Write, Error};
 use std::cell::RefCell;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 use std::collections::BTreeMap;
@@ -48,8 +48,7 @@ impl<'a> Nvim<'a> {
         let command = format!("set scrolloff=0 mouse= showtabline=0 | NoMatchParen");
         Command::new("nvim")
             .arg("--embed")
-            .arg("-nZ")
-            .arg("+0")
+            .arg("-n")
             .arg("-c").arg(command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -358,7 +357,10 @@ impl<'a> Nvim<'a> {
             },
             1 => {
                 // response
-                // println!("{:?}", value[2]);
+                if ! value[2].is_nil() {
+                    let msg = value[2].as_array().unwrap()[1].as_str().unwrap();
+                    writeln!(stderr(), "ERROR: {}", msg)?;
+                }
             },
             _ => (),
         }
