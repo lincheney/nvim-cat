@@ -92,7 +92,7 @@ impl<'a> Nvim<'a> {
         self.offset = 0;
         self.buffer.clear();
         self.buffer_len = 0;
-        self.add_lines(&[], 0).unwrap();
+        self.add_lines(&[]).unwrap();
         self.nvim_command("redraw!").unwrap();
     }
 
@@ -116,9 +116,9 @@ impl<'a> Nvim<'a> {
         self.nvim_command(format!("normal {}gjz\n", down).as_str())
     }
 
-    pub fn add_lines(&mut self, lines: &[&str], incr: usize) -> Result<(), self::rmp_serde::encode::Error> {
+    pub fn add_lines(&mut self, lines: &[String]) -> Result<(), self::rmp_serde::encode::Error> {
         let value = ( 0, 200, "nvim_buf_set_lines", (BUFNUM, self.expected_line, -1, false, lines) );
-        self.expected_line += incr;
+        self.expected_line += lines.len();
         self.state &= ! REACHED_END;
         value.serialize(&mut *self.serializer.borrow_mut())
     }

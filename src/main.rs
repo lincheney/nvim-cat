@@ -10,6 +10,21 @@ mod highlight;
 mod nvim;
 mod epoll;
 
+struct HaltingFile<R> where R: Read {
+    pub fake_eof: bool,
+    file: R,
+}
+
+impl<R> Read for HaltingFile<R> where R: Read {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.fake_eof {
+            return Ok(0)
+        }
+        self.fake_eof = true;
+        self.file.read(buf)
+    }
+}
+
 fn dump_file(
         file: &str,
         poller: &mut epoll::Poller,
@@ -40,8 +55,10 @@ fn dump_file(
         Err(e) => { panic!(e.to_string()); },
     };
 
-    let mut reader = std::io::BufReader::new(file);
-    let mut buf = String::new();
+    let file = HaltingFile{file: file, fake_eof: false};
+    let mut reader = std::io::BufReader::with_capacity(10, file);
+    let mut lines = Vec::<String>::new();
+    let mut leftover: Option<String> = None;
 
     loop {
         let has_stdin = match poller.next(if regular_file {0} else {-1}) {
@@ -58,10 +75,43 @@ fn dump_file(
         };
 
         if has_stdin {
-            buf.clear();
-            if reader.read_line(&mut buf).unwrap() > 0 {
-                nvim.add_lines(&[&buf.trim_right_matches("\n")], 1).unwrap();
-            } else {
+            lines.clear();
+            loop {
+                let mut buf = Vec::<u8>::new();
+                match reader.read_until(b'\n', &mut buf) {
+                    Ok(0) => break,
+                    Ok(len) => {
+                        let has_newline = buf[len - 1] == b'\n';
+
+                        if has_newline {
+                            buf.pop();
+                            if len > 1 && buf[len - 2] == b'\r' {
+                                buf.pop();
+                            }
+                        }
+
+                        let string = unsafe{ std::str::from_utf8_unchecked(&buf) };
+                        let string = if let Some(leftover_str) = leftover {
+                            leftover = None;
+                            leftover_str + string
+                        } else {
+                            string.to_string()
+                        };
+
+                        if has_newline {
+                            lines.push(string);
+                        } else {
+                            leftover = Some(string);
+                        }
+                    }
+                    Err(e) => panic!(e.to_string()),
+                }
+            }
+            reader.get_mut().fake_eof = false;
+
+            if ! lines.is_empty() {
+                nvim.add_lines(&lines[..]).unwrap();
+            } else if leftover.is_none() {
                 if ! regular_file {
                     poller.del_fd(stdin_fd).unwrap();
                 }
