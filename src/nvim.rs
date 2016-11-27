@@ -80,7 +80,7 @@ impl<'a> Nvim<'a> {
 
     pub fn set_eof(&mut self) -> bool {
         self.state |= EOF;
-        if self.state & REACHED_END != 0 {
+        if self.state & REACHED_END != 0 || self.expected_line == 0 {
             self.state |= FINISHED;
             return true
         }
@@ -259,7 +259,7 @@ impl<'a> Nvim<'a> {
     }
 
     fn check_eol(&mut self) -> bool {
-        if self.state & FIRST_DRAW == 0 && self.expected_line == self.cursor.real_row+1 {
+        if self.state & FIRST_DRAW == 0 && self.expected_line <= self.cursor.real_row+1 {
             self.state |= REACHED_END;
             if self.state & EOF != 0 {
                 self.state |= FINISHED;
@@ -327,7 +327,8 @@ impl<'a> Nvim<'a> {
     fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
         let update = update.as_array().unwrap();
         let key = update[0].as_str().unwrap();
-        // print!("{:?}", key);
+        // print!("{:?} {}", key, self.state);
+        // stdout().flush()?;
         if self.state & CLEARING != 0 {
             if key == "clear" {
                 self.state |= FIRST_DRAW;
