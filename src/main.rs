@@ -191,11 +191,8 @@ fn main() {
     for &file in files.iter() {
         if let Err(e) = dump_file(file, &mut poller, &mut nvim, stdout_fd, filetype) {
             match e.kind() {
-                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                    print_error!("{}: {}", file, e);
-                },
                 ErrorKind::BrokenPipe => break,
-                _ => panic!(e.to_string()),
+                _ => { print_error!("{}: {}", file, e); },
             }
         }
     }
