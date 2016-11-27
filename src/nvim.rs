@@ -22,6 +22,8 @@ const MODELINE: usize = 2;
 const EOF: usize = 4;
 const FINISHED: usize = 8;
 const CLEARING: usize = 16;
+const FROZEN_CURSOR: usize = 32;
+const REACHED_END: usize = 64;
 
 #[derive(Debug)]
 struct Cursor {
@@ -40,7 +42,7 @@ pub struct Nvim<'a> {
     hl:             highlight::Highlight,
     default_hl:     highlight::Highlight,
     buffer:         String,
-    buffer_offset:  usize,
+    buffer_len:     usize,
 }
 
 impl<'a> Nvim<'a> {
@@ -70,12 +72,17 @@ impl<'a> Nvim<'a> {
             hl: highlight::Highlight::new(),
             default_hl: highlight::Highlight::new(),
             buffer: String::new(),
-            buffer_offset: 0,
+            buffer_len: 0,
         }
     }
 
-    pub fn set_eof(&mut self) {
+    pub fn set_eof(&mut self) -> bool {
         self.state |= EOF;
+        if self.state & REACHED_END != 0 {
+            self.state |= FINISHED;
+            return true
+        }
+        false
     }
 
     pub fn reset(&mut self) {
@@ -84,7 +91,7 @@ impl<'a> Nvim<'a> {
         self.state = CLEARING;
         self.offset = 0;
         self.buffer.clear();
-        self.buffer_offset = 0;
+        self.buffer_len = 0;
         self.add_lines(&[], 0).unwrap();
         self.nvim_command("redraw!").unwrap();
     }
@@ -112,6 +119,7 @@ impl<'a> Nvim<'a> {
     pub fn add_lines(&mut self, lines: &[&str], incr: usize) -> Result<(), self::rmp_serde::encode::Error> {
         let value = ( 0, 200, "nvim_buf_set_lines", (BUFNUM, self.expected_line, -1, false, lines) );
         self.expected_line += incr;
+        self.state &= ! REACHED_END;
         value.serialize(&mut *self.serializer.borrow_mut())
     }
 
@@ -121,10 +129,27 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
-    fn handle_put_first_draw(&mut self, string: String) -> Result<(), Error> {
-        self.buffer_offset += self.offset + string.len();
+    fn add_to_buffer(&mut self, string: String) {
+        self.buffer_len += self.offset + string.len();
         let string = format!("{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string);
         self.buffer += &string;
+    }
+
+    fn dump_buffer(&mut self) -> Result<(), Error> {
+        if ! self.buffer.is_empty() {
+            if self.offset < self.buffer_len && self.offset != 0 {
+                println!("{}", self.buffer);
+            }
+            assert!(self.offset >= self.buffer_len || self.offset == 0);
+            assert_eq!(self.cursor.col, 0);
+            stdout().write(self.buffer.as_bytes())?;
+            self.cursor.col = self.buffer_len;
+            if self.offset > 0 {
+                self.offset -= self.buffer_len;
+            }
+            self.buffer_len = 0;
+            self.buffer.clear();
+        }
         Ok(())
     }
 
@@ -143,30 +168,23 @@ impl<'a> Nvim<'a> {
 
         let eofstr = format!("~{1:0$}", WIDTH - 1, "");
 
-        if string != eofstr {
-            if self.expected_line == self.cursor.real_row {
-                return self.handle_put_first_draw(string)
+        if string == eofstr {
+            self.state |= FROZEN_CURSOR;
+        } else {
+            self.state &= ! FROZEN_CURSOR;
+
+            if self.cursor.real_row == 0 && self.state & FIRST_DRAW != 0 {
+                self.add_to_buffer(string);
+                return Ok(());
             }
 
-            if ! self.buffer.is_empty() {
-                if self.offset < self.buffer_offset {
-                    println!("{}", self.buffer);
-                }
-                assert!(self.offset >= self.buffer_offset);
-                assert_eq!(self.cursor.col, 0);
-                stdout().write(self.buffer.as_bytes())?;
-                self.cursor.col = self.buffer_offset;
-                self.offset -= self.buffer_offset;
-                self.buffer_offset = 0;
-                self.buffer.clear();
-            }
-
+            self.dump_buffer()?;
             write!(stdout(), "{0}{2:1$}{3}{4}", self.default_hl.to_string(), self.offset, "", self.hl.to_string(), string)?;
             // stdout().flush()?;
             self.cursor.col += self.offset + string.len();
             self.offset = 0;
         }
-        // println!("{} {:?} {}", self.expected_line, string, self.offset);
+        // print!("{} {:?} {}", self.expected_line, string, self.offset);
 
         Ok(())
     }
@@ -181,24 +199,26 @@ impl<'a> Nvim<'a> {
         let col = pos[1].as_u64().unwrap() as usize;
         let real_row = self.cursor.real_row + row - self.cursor.row;
 
-        // println!("{:?}--{:?}#{}#{}", (row, col), self.cursor, self.offset, self.expected_line);
-        if self.state & (FIRST_DRAW | EOF) == EOF && self.expected_line == self.cursor.real_row && row != self.cursor.row {
-            // self.quit().unwrap();
-            self.state |= FINISHED;
-            return Ok(())
-        }
+        // print!("\x1b[0m{:?}--{:?}#{}#{}", (row, col), self.cursor, self.offset, self.expected_line);
 
         if row >= TEXT_HEIGHT {
             // end of page, jumped to modelines
 
-            // scroll + newline if neither first draw nor previously on modeline
-            if self.state & (FIRST_DRAW | MODELINE) == 0 && self.cursor.row == TEXT_HEIGHT-1 {
-                self.scroll(TEXT_HEIGHT).unwrap();
+            if self.state & (FIRST_DRAW | MODELINE | FROZEN_CURSOR) == 0 {
                 self.print_newline()?;
-                self.cursor.real_row += 1;
-                self.cursor.row = 0;
-                self.cursor.col = 0;
-                self.offset = 0;
+                // scroll if neither first draw nor previously on modeline nor frozen
+                if self.cursor.row == TEXT_HEIGHT-1 {
+                    self.scroll(TEXT_HEIGHT).unwrap();
+                    self.cursor.real_row += 1;
+                    self.cursor.row = 0;
+                    self.cursor.col = 0;
+                    self.offset = 0;
+                } else {
+                    self.cursor.row += 1;
+                    self.cursor.col = 0;
+                    self.cursor.real_row += 1;
+                    self.check_eol();
+                }
             }
 
             self.state |= MODELINE;
@@ -212,11 +232,15 @@ impl<'a> Nvim<'a> {
             return Ok(())
 
         } else if row == self.cursor.row+1 {
-            // new line
-            self.cursor.real_row = real_row;
-            self.cursor.row = row;
-            self.cursor.col = 0;
-            self.offset = col;
+            if self.state & FROZEN_CURSOR == 0 {
+                // new line
+                self.check_eol();
+                self.print_newline()?;
+                self.cursor.real_row = real_row;
+                self.cursor.row = row;
+                self.cursor.col = 0;
+                self.offset = col;
+            }
 
         } else if row == self.cursor.row && col >= self.cursor.col {
             // moved right on same line
@@ -228,10 +252,18 @@ impl<'a> Nvim<'a> {
         }
 
         // println!("{:?}--{:?}#{}", (row, col), self.cursor, self.expected_line);
-        if self.state & FIRST_DRAW == 0 {
-            self.print_newline()?
-        }
         Ok(())
+    }
+
+    fn check_eol(&mut self) -> bool {
+        if self.state & FIRST_DRAW == 0 && self.expected_line == self.cursor.real_row+1 {
+            self.state |= REACHED_END;
+            if self.state & EOF != 0 {
+                self.state |= FINISHED;
+                return true
+            }
+        }
+        false
     }
 
     fn handle_highlight_set(&mut self, args: &[rmp::Value]) {
@@ -291,8 +323,8 @@ impl<'a> Nvim<'a> {
 
     fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
         let update = update.as_array().unwrap();
-        // println!("\n{:?}", update);
         let key = update[0].as_str().unwrap();
+        // print!("{:?}", key);
         if self.state & CLEARING != 0 {
             if key == "clear" {
                 self.state |= FIRST_DRAW;
@@ -307,6 +339,11 @@ impl<'a> Nvim<'a> {
             },
             "cursor_goto" => {
                 self.handle_cursor_goto(&update[1..])?;
+            },
+            "eol_clear" => {
+                if self.check_eol() {
+                    self.print_newline()?;
+                }
             },
             "highlight_set" => {
                 self.handle_highlight_set(&update[1..]);

@@ -60,14 +60,14 @@ fn dump_file(
         if has_stdin {
             buf.clear();
             if reader.read_line(&mut buf).unwrap() > 0 {
-                nvim.add_lines(&[&buf.trim_right_matches("\n"), ""], 1).unwrap();
+                nvim.add_lines(&[&buf.trim_right_matches("\n")], 1).unwrap();
             } else {
                 if ! regular_file {
                     poller.del_fd(stdin_fd).unwrap();
                 }
-                nvim.set_eof();
-                // trigger dummy final input
-                nvim.add_lines(&["a"], 0).unwrap();
+                if nvim.set_eof() {
+                    break;
+                }
                 regular_file = false;
             }
         }
