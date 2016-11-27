@@ -1,5 +1,6 @@
 extern crate libc;
 extern crate clap;
+extern crate term_size;
 
 use std::fs::File;
 use std::io::{Read, BufRead};
@@ -152,15 +153,18 @@ fn main() {
         None => vec!["-"],
     };
 
+    let width = term_size::dimensions().map_or(100, |(w, _)| w);
+
     let mut poller = epoll::Poller::new(2);
 
     let process = nvim::Nvim::start_process();
     let stdout = process.stdout.unwrap();
     let stdout_fd = stdout.as_raw_fd();
     let mut stdin = process.stdin.unwrap();
+
     let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
     poller.add_fd(stdout_fd).unwrap();
-    nvim.attach().unwrap();
+    nvim.attach(width).unwrap();
 
     for &file in files.iter() {
         dump_file(file, &mut poller, &mut nvim, stdout_fd, filetype);

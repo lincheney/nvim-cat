@@ -13,7 +13,6 @@ use self::serde::{Serialize, Deserialize};
 use highlight;
 
 const HEIGHT: usize = 100;
-const WIDTH: usize = 100;
 const TEXT_HEIGHT: usize = HEIGHT - 2;
 const BUFNUM: usize = 1;
 
@@ -38,6 +37,7 @@ pub struct Nvim<'a> {
     cursor:         Cursor,
     expected_line:  usize,
     offset:         usize,
+    eofstr:         String,
     pub state:      usize,
     hl:             highlight::Highlight,
     default_hl:     highlight::Highlight,
@@ -48,6 +48,7 @@ pub struct Nvim<'a> {
 impl<'a> Nvim<'a> {
     pub fn start_process() -> Child {
         let command = format!("set scrolloff=0 mouse= showtabline=0 | NoMatchParen");
+
         Command::new("nvim")
             .arg("--embed")
             .arg("-n")
@@ -69,6 +70,7 @@ impl<'a> Nvim<'a> {
             expected_line: 0,
             state: CLEARING,
             offset: 0,
+            eofstr: String::new(),
             hl: highlight::Highlight::new(),
             default_hl: highlight::Highlight::new(),
             buffer: String::new(),
@@ -101,10 +103,13 @@ impl<'a> Nvim<'a> {
         value.serialize(&mut *self.serializer.borrow_mut())
     }
 
-    pub fn attach(&self) -> Result<(), self::rmp_serde::encode::Error> {
+    pub fn attach(&mut self, width: usize) -> Result<(), self::rmp_serde::encode::Error> {
         let mut kwargs = BTreeMap::new();
         kwargs.insert("rgb", true);
-        let value = ( 0, 100, "nvim_ui_attach", (WIDTH, HEIGHT, kwargs) );
+
+        self.eofstr = format!("~{1:0$}", width - 1, "");
+
+        let value = ( 0, 100, "nvim_ui_attach", (width, HEIGHT, kwargs) );
         value.serialize(&mut *self.serializer.borrow_mut())
     }
 
@@ -166,9 +171,7 @@ impl<'a> Nvim<'a> {
             ;
         let string = parts.join("");
 
-        let eofstr = format!("~{1:0$}", WIDTH - 1, "");
-
-        if string == eofstr {
+        if string == self.eofstr {
             self.state |= FROZEN_CURSOR;
         } else {
             self.state &= ! FROZEN_CURSOR;
