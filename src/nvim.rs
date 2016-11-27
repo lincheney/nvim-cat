@@ -327,8 +327,10 @@ impl<'a> Nvim<'a> {
     fn handle_update(&mut self, update: &rmp::Value) -> Result<(), Error> {
         let update = update.as_array().unwrap();
         let key = update[0].as_str().unwrap();
-        // print!("{:?} {}", key, self.state);
+
+        // print!("{} {}", key, self.state);
         // stdout().flush()?;
+
         if self.state & CLEARING != 0 {
             if key == "clear" {
                 self.state |= FIRST_DRAW;

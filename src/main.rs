@@ -58,10 +58,10 @@ fn dump_file(
     let file = File::open(file)?;
     let stdin_fd = file.as_raw_fd();
 
-    let mut regular_file = match poller.add_fd(stdin_fd) {
-        Ok(_) => false,
+    let mut timeout = match poller.add_fd(stdin_fd) {
+        Ok(_) => -1,
         // EPERM: cannot epoll this file
-        Err(ref e) if e.kind() == ErrorKind::PermissionDenied => true,
+        Err(ref e) if e.kind() == ErrorKind::PermissionDenied => 0,
         Err(e) => return Err(e),
     };
 
@@ -71,7 +71,7 @@ fn dump_file(
     let mut leftover: Option<String> = None;
 
     loop {
-        let has_stdin = match poller.next(if regular_file {0} else {-1}) {
+        let has_stdin = match poller.next(timeout) {
             Some(fd) if fd == stdout_fd => {
                 if nvim.process_event()? {
                     break;
@@ -86,13 +86,16 @@ fn dump_file(
 
         if has_stdin {
             lines.clear();
+            let mut eof = true;
+
             loop {
                 let mut buf = Vec::<u8>::new();
                 match reader.read_until(b'\n', &mut buf)? {
                     0 => break,
                     len => {
-                        let has_newline = buf[len - 1] == b'\n';
+                        eof = false;
 
+                        let has_newline = buf[len - 1] == b'\n';
                         if has_newline {
                             buf.pop();
                             if len > 1 && buf[len - 2] == b'\r' {
@@ -116,18 +119,28 @@ fn dump_file(
                     }
                 }
             }
+
             reader.get_mut().fake_eof = false;
+
+            if eof {
+                if let Some(leftover_str) = leftover {
+                    leftover = None;
+                    lines.push(leftover_str);
+                }
+            }
 
             if ! lines.is_empty() {
                 nvim.add_lines(&lines[..]).unwrap();
-            } else if leftover.is_none() {
-                if ! regular_file {
+            }
+
+            if eof {
+                if timeout != 0 {
                     poller.del_fd(stdin_fd).unwrap();
                 }
                 if nvim.set_eof() {
                     break;
                 }
-                regular_file = false;
+                timeout = -1;
             }
         }
     }
