@@ -3,7 +3,7 @@ extern crate clap;
 extern crate term_size;
 
 use std::fs::File;
-use std::io::{stderr, Write, Read, BufRead};
+use std::io::{stderr, Write, Read, BufRead, ErrorKind};
 use std::os::unix::io::{AsRawFd, RawFd};
 use clap::{Arg, App};
 
@@ -41,7 +41,7 @@ fn dump_file(
         nvim: &mut nvim::Nvim,
         stdout_fd: RawFd,
         filetype: Option<&str>,
-        ) {
+        ) -> Result<(), std::io::Error> {
 
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     println!("{}", file);
@@ -55,23 +55,14 @@ fn dump_file(
         }
     }
 
-    let file = match File::open(file) {
-        Ok(file) => file,
-        Err(e) => {
-            print_error!("{}: {}", filename, e);
-            return;
-        }
-    };
+    let file = File::open(file)?;
     let stdin_fd = file.as_raw_fd();
 
     let mut regular_file = match poller.add_fd(stdin_fd) {
         Ok(_) => false,
         // EPERM: cannot epoll this file
-        Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
-        Err(e) => {
-            print_error!("{}: {}", filename, e);
-            return;
-        },
+        Err(ref e) if e.kind() == ErrorKind::PermissionDenied => true,
+        Err(e) => return Err(e),
     };
 
     let file = HaltingFile{file: file, fake_eof: false};
@@ -82,7 +73,7 @@ fn dump_file(
     loop {
         let has_stdin = match poller.next(if regular_file {0} else {-1}) {
             Some(fd) if fd == stdout_fd => {
-                if nvim.process_event().unwrap() {
+                if nvim.process_event()? {
                     break;
                 }
                 false
@@ -97,9 +88,9 @@ fn dump_file(
             lines.clear();
             loop {
                 let mut buf = Vec::<u8>::new();
-                match reader.read_until(b'\n', &mut buf) {
-                    Ok(0) => break,
-                    Ok(len) => {
+                match reader.read_until(b'\n', &mut buf)? {
+                    0 => break,
+                    len => {
                         let has_newline = buf[len - 1] == b'\n';
 
                         if has_newline {
@@ -123,10 +114,6 @@ fn dump_file(
                             leftover = Some(string);
                         }
                     }
-                    Err(e) => {
-                        print_error!("{}: {}", filename, e);
-                        return;
-                    }
                 }
             }
             reader.get_mut().fake_eof = false;
@@ -146,6 +133,7 @@ fn dump_file(
     }
 
     nvim.reset();
+    Ok(())
 }
 
 fn main() {
@@ -188,7 +176,15 @@ fn main() {
     nvim.attach(width).unwrap();
 
     for &file in files.iter() {
-        dump_file(file, &mut poller, &mut nvim, stdout_fd, filetype);
+        if let Err(e) = dump_file(file, &mut poller, &mut nvim, stdout_fd, filetype) {
+            match e.kind() {
+                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                    print_error!("{}: {}", file, e);
+                },
+                ErrorKind::BrokenPipe => break,
+                _ => panic!(e.to_string()),
+            }
+        }
     }
     nvim.quit().unwrap();
 }
