@@ -3,13 +3,22 @@ extern crate clap;
 extern crate term_size;
 
 use std::fs::File;
-use std::io::{Read, BufRead};
+use std::io::{stderr, Write, Read, BufRead};
 use std::os::unix::io::{AsRawFd, RawFd};
 use clap::{Arg, App};
 
 mod highlight;
 mod nvim;
 mod epoll;
+
+macro_rules! print_error(
+    ($fmt:expr) => ({
+        writeln!(&mut stderr(), concat!("error: ", $fmt)).ok()
+    });
+    ($fmt:expr, $($arg:tt)*) => ({
+        writeln!(&mut stderr(), concat!("error: ", $fmt), $($arg)*).ok()
+    })
+);
 
 struct HaltingFile<R> where R: Read {
     pub fake_eof: bool,
@@ -27,14 +36,14 @@ impl<R> Read for HaltingFile<R> where R: Read {
 }
 
 fn dump_file(
-        file: &str,
+        filename: &str,
         poller: &mut epoll::Poller,
         nvim: &mut nvim::Nvim,
         stdout_fd: RawFd,
         filetype: Option<&str>,
         ) {
 
-    let file = if file == "-" { "/dev/stdin" } else { file };
+    let file = if filename == "-" { "/dev/stdin" } else { filename };
     println!("{}", file);
 
     match filetype {
@@ -46,14 +55,23 @@ fn dump_file(
         }
     }
 
-    let file = File::open(file).unwrap();
+    let file = match File::open(file) {
+        Ok(file) => file,
+        Err(e) => {
+            print_error!("{}: {}", filename, e);
+            return;
+        }
+    };
     let stdin_fd = file.as_raw_fd();
 
     let mut regular_file = match poller.add_fd(stdin_fd) {
         Ok(_) => false,
         // EPERM: cannot epoll this file
         Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
-        Err(e) => { panic!(e.to_string()); },
+        Err(e) => {
+            print_error!("{}: {}", filename, e);
+            return;
+        },
     };
 
     let file = HaltingFile{file: file, fake_eof: false};
@@ -105,7 +123,10 @@ fn dump_file(
                             leftover = Some(string);
                         }
                     }
-                    Err(e) => panic!(e.to_string()),
+                    Err(e) => {
+                        print_error!("{}: {}", filename, e);
+                        return;
+                    }
                 }
             }
             reader.get_mut().fake_eof = false;
