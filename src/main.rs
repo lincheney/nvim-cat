@@ -5,7 +5,7 @@ extern crate libc;
 extern crate clap;
 
 use std::fs::File;
-use std::io::{stderr, Write, BufReader, BufRead, ErrorKind};
+use std::io::{stdout, stderr, Write, BufReader, BufRead, ErrorKind};
 use clap::{Arg, App};
 
 mod nvim;
@@ -41,8 +41,10 @@ fn dump_file(
     let file = File::open(file)?;
     let file = BufReader::new(&file);
     for line in file.lines() {
-        let l = line.unwrap();
-        println!("{}", nvim.add_line(&l).unwrap());
+        let line = line.unwrap();
+        let line = nvim.add_line(&line).unwrap();
+        stdout().write(line.as_bytes())?;
+        stdout().write(b"\n")?;
     }
 
     // nvim.reset();
