@@ -33,8 +33,7 @@ fn dump_file(
             nvim.set_filetype(filetype).unwrap();
         },
         None => {
-            nvim.nvim_command(51, &format!("set ft= | doautocmd BufRead {}", file)).unwrap();
-            nvim.wait_for_response(51).unwrap();
+            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file)).unwrap();
         }
     }
 

@@ -84,6 +84,7 @@ pub struct Nvim<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
     syn_attr_cache: HashMap<usize, SynAttr>,
+    rpc_id:         usize,
 }
 
 impl<'a> Nvim<'a> {
@@ -108,33 +109,30 @@ impl<'a> Nvim<'a> {
             deserializer: deserializer,
             serializer: RefCell::new(serializer),
             syn_attr_cache: HashMap::new(),
+            rpc_id: 100,
         }
     }
 
-    pub fn nvim_command(&mut self, id: u64, command: &str) -> Result<(), self::rmp_serde::encode::Error> {
-        let value = ( 0, id, "nvim_command", (command,) );
-        value.serialize(&mut *self.serializer.borrow_mut())
+    pub fn nvim_command(&mut self, command: &str) -> Result<(), self::rmp_serde::encode::Error> {
+        self.request("nvim_command", (command,)).unwrap();
+        Ok(())
     }
 
     pub fn set_filetype(&mut self, filetype: &str) -> Result<(), self::rmp_serde::encode::Error> {
-        self.nvim_command(50, &format!("set ft={}", filetype))?;
-        self.wait_for_response(50).unwrap();
+        self.request("nvim_command", (&format!("set ft={}", filetype),) ).unwrap();
         Ok(())
     }
 
     pub fn quit(&mut self) -> Result<(), self::rmp_serde::encode::Error> {
-        self.nvim_command(100, "qa!")?;
         // don't wait for response, nvim will have quit by then
-        // self.wait_for_response(100);
+        self.send_request("nvim_command", ("qa!",)).unwrap();
         Ok(())
     }
 
     // add @line to vim
     pub fn add_line(&mut self, line: &String) -> Result<(), self::rmp_serde::encode::Error> {
         // insert the line
-        let value = ( 0, 200, "buffer_insert", (BUFNUM, -1, &[line]) );
-        value.serialize(&mut *self.serializer.borrow_mut())?;
-        self.wait_for_response(200).unwrap();
+        self.request("buffer_insert", (BUFNUM, -1, &[line])).unwrap();
         Ok(())
     }
 
@@ -177,25 +175,20 @@ impl<'a> Nvim<'a> {
 
     // get syn ids for line @lineno which has length @length
     fn get_synid(&mut self, lineno: usize, length: usize) -> Result<rmp::Value, Error> {
-        let id = 30;
-        let range: Vec<usize> = (1..length+1).collect();
         // use map to reduce rpc calls
+        let range: Vec<usize> = (1..length+1).collect();
         let args = (range, format!("synIDtrans(synID({}, v:val, 0))", lineno));
-        let value = ( 0, id, "vim_call_function", ("map", args) );
-        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
-        self.wait_for_response(id)
+        self.request("vim_call_function", ("map", args))
     }
 
     // get the syn attr for @synid (cached)
     fn get_synattr(&mut self, synid: usize) -> Result<&SynAttr, Error> {
         if ! self.syn_attr_cache.contains_key(&synid) {
-            let id = 31;
             // use map to reduce rpc calls
             let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
-            let value = ( 0, id, "vim_call_function", ("map", (attrs, format!("synIDattr({}, v:val, 'gui')", synid)) ) );
-            value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
+            let response = self.request("vim_call_function", ("map", (attrs, format!("synIDattr({}, v:val, 'gui')", synid)) ));
 
-            let attrs = match self.wait_for_response(id) {
+            let attrs = match response {
                 Err(e) => { return Err(e) },
                 Ok(response) => {
                     let attrs = response.as_array().unwrap();
@@ -223,7 +216,19 @@ impl<'a> Nvim<'a> {
         Ok(self.syn_attr_cache.get(&synid).unwrap())
     }
 
-    pub fn wait_for_response(&mut self, id: u64) -> Result<rmp::Value, Error> {
+    pub fn request<T>(&mut self, command: &str, args: T) -> Result<rmp::Value, Error> where T: Serialize {
+        let id = self.send_request(command, args).unwrap();
+        self.wait_for_response(id)
+    }
+
+    fn send_request<T>(&mut self, command: &str, args: T) -> Result<usize, self::rmp_serde::encode::Error> where T: Serialize {
+        self.rpc_id += 1;
+        let value = ( 0, self.rpc_id, command, args );
+        value.serialize(&mut *self.serializer.borrow_mut()).map(|_| self.rpc_id)
+    }
+
+    fn wait_for_response(&mut self, id: usize) -> Result<rmp::Value, Error> {
+        let id = id as u64;
         loop {
             let value : rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer).unwrap();
             let value = value.as_array().unwrap();
@@ -252,8 +257,6 @@ impl<'a> Nvim<'a> {
 
         // clear vim buffer
         let lines: [&str; 0] = [];
-        let value = ( 0, 50, "buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines) );
-        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
-        self.wait_for_response(50).unwrap();
+        self.request("buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines)).unwrap();
     }
 }
