@@ -46,7 +46,7 @@ fn dump_file(
         nvim.add_line(&line).unwrap();
         let line = nvim.get_line(&line, lineno).unwrap();
         stdout().write(line.as_bytes())?;
-        stdout().write(b"\n")?;
+        stdout().write(b"\x1b[0m\n")?;
         lineno += 1;
     }
 
