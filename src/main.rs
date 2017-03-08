@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate quick_error;
 
 extern crate libc;
 extern crate clap;
@@ -49,7 +51,7 @@ fn dump_file(
         lineno += 1;
     }
 
-    nvim.reset();
+    nvim.reset().unwrap();
     Ok(())
 }
 
