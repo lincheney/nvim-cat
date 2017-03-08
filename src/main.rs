@@ -50,7 +50,7 @@ fn dump_file(
         lineno += 1;
     }
 
-    // nvim.reset();
+    nvim.reset();
     Ok(())
 }
 

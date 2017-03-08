@@ -246,4 +246,14 @@ impl<'a> Nvim<'a> {
             }
         }
     }
+
+    pub fn reset(&mut self) {
+        // self.syn_attr_cache.clear();
+
+        // clear vim buffer
+        let lines: [&str; 0] = [];
+        let value = ( 0, 50, "buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines) );
+        value.serialize(&mut *self.serializer.borrow_mut()).unwrap();
+        self.wait_for_response(50).unwrap();
+    }
 }
