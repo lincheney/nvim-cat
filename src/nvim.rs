@@ -83,7 +83,6 @@ fn parse_colour(string: &str) -> Option<String> {
 pub struct Nvim<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
-    lineno:         usize,
     syn_attr_cache: HashMap<usize, SynAttr>,
 }
 
@@ -108,7 +107,6 @@ impl<'a> Nvim<'a> {
         Nvim {
             deserializer: deserializer,
             serializer: RefCell::new(serializer),
-            lineno: 1,
             syn_attr_cache: HashMap::new(),
         }
     }
@@ -118,6 +116,12 @@ impl<'a> Nvim<'a> {
         value.serialize(&mut *self.serializer.borrow_mut())
     }
 
+    pub fn set_filetype(&mut self, filetype: &str) -> Result<(), self::rmp_serde::encode::Error> {
+        self.nvim_command(50, &format!("set ft={}", filetype))?;
+        self.wait_for_response(50).unwrap();
+        Ok(())
+    }
+
     pub fn quit(&mut self) -> Result<(), self::rmp_serde::encode::Error> {
         self.nvim_command(100, "qa!")?;
         // don't wait for response, nvim will have quit by then
@@ -125,16 +129,18 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
-    // add @line to vim and then print the coloured output
-    pub fn add_line(&mut self, line: &String) -> Result<String, self::rmp_serde::encode::Error> {
+    // add @line to vim
+    pub fn add_line(&mut self, line: &String) -> Result<(), self::rmp_serde::encode::Error> {
         // insert the line
         let value = ( 0, 200, "buffer_insert", (BUFNUM, -1, &[line]) );
         value.serialize(&mut *self.serializer.borrow_mut())?;
         self.wait_for_response(200).unwrap();
-        self.lineno += 1;
+        Ok(())
+    }
 
+    // get @line from vim
+    pub fn get_line(&mut self, line: &String, lineno: usize) -> Result<String, self::rmp_serde::encode::Error> {
         // get syntax ids for each char in line
-        let lineno = self.lineno;
         let synids = self.get_synid(lineno, line.len()).unwrap();
         let synids = synids.as_array().unwrap();
 

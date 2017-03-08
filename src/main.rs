@@ -30,21 +30,24 @@ fn dump_file(
 
     match filetype {
         Some(filetype) => {
-            nvim.nvim_command(50, &format!("set ft={}", filetype)).unwrap();
-            nvim.wait_for_response(50).unwrap();
+            nvim.set_filetype(filetype).unwrap();
         },
         None => {
             nvim.nvim_command(51, &format!("set ft= | doautocmd BufRead {}", file)).unwrap();
+            nvim.wait_for_response(51).unwrap();
         }
     }
 
     let file = File::open(file)?;
     let file = BufReader::new(&file);
+    let mut lineno = 2;
     for line in file.lines() {
         let line = line.unwrap();
-        let line = nvim.add_line(&line).unwrap();
+        nvim.add_line(&line).unwrap();
+        let line = nvim.get_line(&line, lineno).unwrap();
         stdout().write(line.as_bytes())?;
         stdout().write(b"\n")?;
+        lineno += 1;
     }
 
     // nvim.reset();
