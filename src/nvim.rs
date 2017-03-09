@@ -3,68 +3,15 @@ extern crate rmp_serde;
 extern crate serde;
 
 use std::collections::HashMap;
-use std::ascii::AsciiExt;
 use std::io::{stderr, Write};
 use std::cell::RefCell;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
 use self::rmp_serde::{Serializer, Deserializer};
 use self::serde::{Serialize, Deserialize};
+use synattr::{SynAttr, DEFAULT_ATTR};
 
 const BUFNUM: usize = 1;
-
-#[derive(Clone)]
-struct SynAttr {
-    fg: String,
-    bg: String,
-    bold: String,
-    reverse: String,
-    italic: String,
-    underline: String,
-}
-
-lazy_static! {
-    static ref COLOUR_MAP: HashMap<&'static str, usize> = {
-        let mut m = HashMap::new();
-        m.insert("black", 0);
-        m.insert("darkblue", 4);
-        m.insert("darkgreen", 2);
-        m.insert("darkcyan", 6);
-        m.insert("darkred", 1);
-        m.insert("darkmagenta", 5);
-        m.insert("darkyellow", 3);
-        m.insert("brown", 3);
-        m.insert("lightgray", 7);
-        m.insert("lightgrey", 7);
-        m.insert("gray", 7);
-        m.insert("grey", 7);
-        m.insert("darkgray", 8);
-        m.insert("darkgrey", 8);
-        m.insert("blue", 12);
-        m.insert("lightblue", 12);
-        m.insert("green", 10);
-        m.insert("lightgreen", 10);
-        m.insert("cyan", 14);
-        m.insert("lightcyan", 14);
-        m.insert("red", 9);
-        m.insert("lightred", 9);
-        m.insert("magenta", 13);
-        m.insert("lightmagenta", 13);
-        m.insert("yellow", 11);
-        m.insert("lightyellow", 11);
-        m.insert("white", 15);
-        m
-    };
-
-    static ref DEFAULT_ATTR: SynAttr = SynAttr{
-        fg: "".to_string(),
-        bg: "".to_string(),
-        bold: "".to_string(),
-        reverse: "".to_string(),
-        italic: "".to_string(),
-        underline: "".to_string(),
-    };
-}
 
 quick_error! {
     #[derive(Debug)]
@@ -73,20 +20,6 @@ quick_error! {
         EncodeError(x: rmp_serde::encode::Error) { from() }
         DecodeError(x: rmp_serde::decode::Error) { from() }
     }
-}
-
-fn parse_colour(string: &str) -> Option<String> {
-    if string.is_empty() { return None; }
-
-    if string.chars().next() == Some('#') {
-        // rgb
-        let i = i64::from_str_radix(&string[1..], 16).expect("expected a hex string");
-        return Some(format!("2;{};{};{}", i>>16, (i>>8)&0xff, i&0xff));
-    }
-
-    // named colour
-    let string = string.to_ascii_lowercase();
-    COLOUR_MAP.get(&string[..]).map(|i| format!("5;{}", i))
 }
 
 pub struct Nvim<'a> {
@@ -196,21 +129,14 @@ impl<'a> Nvim<'a> {
             let attrs = self.request("vim_call_function", ("map", (attrs, format!("synIDattr({}, v:val, 'gui')", synid)) ))?;
 
             let attrs = attrs.as_array().expect("expected an array");
-            let fg = parse_colour(attrs[0].as_str().expect("expected a string"));
-            let bg = parse_colour(attrs[1].as_str().expect("expected a string"));
-            let bold = attrs[2].as_str().expect("expected a string");
-            let reverse = attrs[3].as_str().expect("expected a string");
-            let italic = attrs[4].as_str().expect("expected a string");
-            let underline = attrs[5].as_str().expect("expected a string");
-
-            let attrs = SynAttr{
-                fg: if let Some(fg) = fg { format!("38;{}", fg) } else { "39".to_string() },
-                bg: if let Some(bg) = bg { format!("48;{}", bg) } else { "49".to_string() },
-                bold: (if bold.is_empty() { "21" } else { "1" }).to_string(),
-                reverse: (if reverse.is_empty() { "27" } else { "7" }).to_string(),
-                italic: (if italic.is_empty() { "23" } else { "3" }).to_string(),
-                underline: (if underline.is_empty() { "24" } else { "4" }).to_string(),
-            };
+            let attrs = SynAttr::new(
+                attrs[0].as_str().expect("expected a string"),
+                attrs[1].as_str().expect("expected a string"),
+                attrs[2].as_str().expect("expected a string"),
+                attrs[3].as_str().expect("expected a string"),
+                attrs[4].as_str().expect("expected a string"),
+                attrs[5].as_str().expect("expected a string"),
+            );
 
             self.syn_attr_cache.insert(synid, attrs);
         }

@@ -11,6 +11,7 @@ use std::io::{stdout, stderr, Write, BufReader, BufRead, ErrorKind};
 use clap::{Arg, App};
 
 mod nvim;
+mod synattr;
 
 macro_rules! print_error(
     ($fmt:expr) => ({
