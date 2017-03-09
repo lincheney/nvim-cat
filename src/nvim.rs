@@ -30,7 +30,7 @@ pub struct Nvim<'a> {
     deserializer:   Deserializer<ChildStdout>,
     serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
     syn_attr_cache: HashMap<usize, SynAttr>,
-    rpc_id:         usize,
+    rpc_id:         u32,
 }
 
 impl<'a> Nvim<'a> {
@@ -150,14 +150,14 @@ impl<'a> Nvim<'a> {
         self.wait_for_response(id)
     }
 
-    fn send_request<T>(&mut self, command: &str, args: T) -> Result<usize, NvimError> where T: Serialize {
+    fn send_request<T>(&mut self, command: &str, args: T) -> Result<u32, NvimError> where T: Serialize {
         self.rpc_id += 1;
         let value = ( 0, self.rpc_id, command, args );
         value.serialize(&mut *self.serializer.borrow_mut())?;
         Ok(self.rpc_id)
     }
 
-    fn wait_for_response(&mut self, id: usize) -> Result<rmp::Value, NvimError> {
+    fn wait_for_response(&mut self, id: u32) -> Result<rmp::Value, NvimError> {
         let id = id as u64;
         loop {
             let value : rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer)?;
