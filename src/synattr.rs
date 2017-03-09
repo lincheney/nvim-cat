@@ -11,14 +11,14 @@ pub struct SynAttr {
     pub underline: &'static str,
 }
 
-static BOLD: &'static str = "1";
-static NOBOLD: &'static str = "21";
-static REVERSE: &'static str = "7";
-static NOREVERSE: &'static str = "27";
-static ITALIC: &'static str = "3";
-static NOITALIC: &'static str = "23";
-static UNDERLINE: &'static str = "4";
-static NOUNDERLINE: &'static str = "24";
+const BOLD: &'static str = "1";
+const NOBOLD: &'static str = "21";
+const REVERSE: &'static str = "7";
+const NOREVERSE: &'static str = "27";
+const ITALIC: &'static str = "3";
+const NOITALIC: &'static str = "23";
+const UNDERLINE: &'static str = "4";
+const NOUNDERLINE: &'static str = "24";
 
 lazy_static! {
     static ref COLOUR_MAP: HashMap<&'static str, usize> = {
