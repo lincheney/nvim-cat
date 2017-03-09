@@ -33,7 +33,7 @@ fn dump_file(
 
     match filetype {
         Some(filetype) => {
-            nvim.set_filetype(filetype)?;
+            nvim.nvim_command(&format!("set ft={}", filetype))?;
         },
         None => {
             nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file))?;

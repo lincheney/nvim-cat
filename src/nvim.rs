@@ -62,10 +62,6 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
-    pub fn set_filetype(&mut self, filetype: &str) -> Result<(), NvimError> {
-        self.nvim_command(&format!("set ft={}", filetype))
-    }
-
     pub fn quit(&mut self) -> Result<(), NvimError> {
         // don't wait for response, nvim will have quit by then
         self.send_request("nvim_command", ("qa!",))?;
