@@ -80,9 +80,10 @@ impl<'a> Nvim<'a> {
         let synids = self.get_synid(lineno, line.len())?;
         let synids = synids.as_array().expect("expected an array");
 
-        let mut parts: Vec<String> = vec![];
+        let mut parts = String::with_capacity(line.len());
         let mut prev: SynAttr = DEFAULT_ATTR.clone();
-        for (i, c) in synids.into_iter().zip(line.chars()) {
+        let mut start = 0;
+        for (i, end) in synids.into_iter().zip(0..line.len()) {
             let i = i.as_u64().expect("expected int") as usize;
             // get syntax attr
             let attr = self.get_synattr(i)?;
@@ -101,14 +102,16 @@ impl<'a> Nvim<'a> {
             prev = attr.clone();
 
             if ! ansi.is_empty() {
-                parts.push("\x1b[".to_string());
-                parts.push(ansi);
-                parts.push("m".to_string());
+                parts.push_str(&line[start..end]);
+                parts.push_str("\x1b[");
+                parts.push_str(&ansi);
+                parts.push_str("m");
+                start = end;
             }
-            parts.push(c.to_string());
         }
 
-        Ok(parts.join(""))
+        parts.push_str(&line[start..]);
+        Ok(parts)
     }
 
     // get syn ids for line @lineno which has length @length
