@@ -26,33 +26,34 @@ fn dump_file(
         filename: &str,
         nvim: &mut nvim::Nvim,
         filetype: Option<&str>,
-        ) -> Result<(), std::io::Error> {
+        ) -> Result<(), nvim::NvimError> {
 
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     println!("{}", file);
 
     match filetype {
         Some(filetype) => {
-            nvim.set_filetype(filetype).unwrap();
+            nvim.set_filetype(filetype)?;
         },
         None => {
-            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file)).unwrap();
+            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file))?;
         }
     }
 
     let file = File::open(file)?;
     let file = BufReader::new(&file);
     let mut lineno = 2;
+
     for line in file.lines() {
-        let line = line.unwrap();
-        nvim.add_line(&line).unwrap();
-        let line = nvim.get_line(&line, lineno).unwrap();
+        let line = line?;
+        nvim.add_line(&line)?;
+        let line = nvim.get_line(&line, lineno)?;
         stdout().write(line.as_bytes())?;
         stdout().write(b"\x1b[0m\n")?;
         lineno += 1;
     }
 
-    nvim.reset().unwrap();
+    nvim.reset()?;
     Ok(())
 }
 
@@ -89,11 +90,10 @@ fn main() {
     let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
 
     for &file in files.iter() {
-        if let Err(e) = dump_file(file, &mut nvim, filetype) {
-            match e.kind() {
-                ErrorKind::BrokenPipe => break,
-                _ => { print_error!("{}: {}", file, e); },
-            }
+        match dump_file(file, &mut nvim, filetype) {
+            Ok(_) => (),
+            Err(nvim::NvimError::IOError(ref e)) if e.kind() == ErrorKind::BrokenPipe => break,
+            Err(e) => { print_error!("{}: {}", file, e); },
         }
     }
     nvim.quit().unwrap();

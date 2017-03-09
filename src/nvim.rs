@@ -2,6 +2,7 @@ extern crate rmp;
 extern crate rmp_serde;
 extern crate serde;
 
+use std;
 use std::collections::HashMap;
 use std::io::{stderr, Write};
 use std::cell::RefCell;
@@ -21,6 +22,7 @@ quick_error! {
         RpcError(x: String) { }
         EncodeError(x: rmp_serde::encode::Error) { from() }
         DecodeError(x: rmp_serde::decode::Error) { from() }
+        IOError(x: std::io::Error) { from() }
     }
 }
 
