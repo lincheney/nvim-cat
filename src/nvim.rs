@@ -12,6 +12,8 @@ use self::serde::{Serialize, Deserialize};
 use synattr::{SynAttr, DEFAULT_ATTR};
 
 const BUFNUM: usize = 1;
+const INIT_COMMAND: &'static str =
+    "set scrolloff=0 mouse= showtabline=0 | NoMatchParen";
 
 quick_error! {
     #[derive(Debug)]
@@ -31,12 +33,10 @@ pub struct Nvim<'a> {
 
 impl<'a> Nvim<'a> {
     pub fn start_process() -> Child {
-        let command = "set scrolloff=0 mouse= showtabline=0 | NoMatchParen";
-
         Command::new("nvim")
             .arg("--embed")
             .arg("-n")
-            .arg("-c").arg(command)
+            .arg("-c").arg(INIT_COMMAND)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
