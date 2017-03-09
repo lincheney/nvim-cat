@@ -29,7 +29,7 @@ fn dump_file(
         ) -> Result<(), nvim::NvimError> {
 
     let file = if filename == "-" { "/dev/stdin" } else { filename };
-    println!("{}", file);
+    // println!("{}", file);
 
     match filetype {
         Some(filetype) => {
