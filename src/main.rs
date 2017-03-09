@@ -10,17 +10,17 @@ use std::fs::File;
 use std::io::{stdout, stderr, Write, BufReader, BufRead, ErrorKind};
 use clap::{Arg, App};
 
-mod nvim;
-mod synattr;
-
 macro_rules! print_error(
     ($fmt:expr) => ({
-        writeln!(&mut stderr(), concat!("error: ", $fmt)).ok()
+        writeln!(stderr(), concat!("ERROR: ", $fmt)).ok()
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        writeln!(&mut stderr(), concat!("error: ", $fmt), $($arg)*).ok()
+        writeln!(stderr(), concat!("ERROR: ", $fmt), $($arg)*).ok()
     })
 );
+
+mod nvim;
+mod synattr;
 
 fn dump_file(
         filename: &str,

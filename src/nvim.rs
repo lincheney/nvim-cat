@@ -181,8 +181,8 @@ impl<'a> Nvim<'a> {
                     }
 
                     if let Some(err_msg) = err_msg {
-                        // ignore problems with printing errors
-                        writeln!(stderr(), "ERROR: {}", err_msg).unwrap_or(());
+                        // error from something else?
+                        print_error!("{}", err_msg);
                     }
                 },
                 2 => {
