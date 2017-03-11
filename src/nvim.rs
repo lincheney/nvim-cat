@@ -33,7 +33,7 @@ quick_error! {
 
 pub struct Nvim<'a> {
     transport:      Transport<'a>,
-    syn_attr_cache: HashMap<usize, SynAttr>,
+    syn_attr_cache: RefCell<HashMap<usize, SynAttr>>,
     barrier:        Arc<Barrier>,
 }
 
@@ -90,7 +90,7 @@ impl<'a> Nvim<'a> {
 
         Nvim {
             transport: transport,
-            syn_attr_cache: HashMap::new(),
+            syn_attr_cache: RefCell::new(HashMap::new()),
             barrier: barrier,
         }
     }
@@ -111,7 +111,7 @@ impl<'a> Nvim<'a> {
         Handle{tx: tx, handle: handle, barrier: barrier.clone()}
     }
 
-    fn main_loop(&mut self, rx: Receiver<Payload>) -> Result<(), NvimError> {
+    fn main_loop(&self, rx: Receiver<Payload>) -> Result<(), NvimError> {
         loop {
             match rx.recv() {
                 Ok(Payload::Data(line, lineno)) => {
@@ -155,7 +155,7 @@ impl<'a> Nvim<'a> {
     }
 
     // get @line from vim
-    fn get_line(&mut self, line: &String, lineno: usize) -> Result<String, NvimError> {
+    fn get_line(&self, line: &String, lineno: usize) -> Result<String, NvimError> {
         // get syntax ids for each char in line
         let synids = self.get_synid(lineno, line.len())?;
         let synids = synids.as_array().expect("expected an array");
@@ -179,7 +179,7 @@ impl<'a> Nvim<'a> {
                 ansi.join(";")
             };
 
-            prev = attr.clone();
+            prev = attr;
 
             if ! ansi.is_empty() {
                 parts.push_str(&line[start..end]);
@@ -203,26 +203,27 @@ impl<'a> Nvim<'a> {
     }
 
     // get the syn attr for @synid (cached)
-    fn get_synattr(&mut self, synid: usize) -> Result<&SynAttr, NvimError> {
-        if ! self.syn_attr_cache.contains_key(&synid) {
-            // use map to reduce rpc calls
-            let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
-            let attrs = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, 'gui')", synid)) ))?;
-
-            let attrs = attrs.as_array().expect("expected an array");
-            let attrs = SynAttr::new(
-                attrs[0].as_str().expect("expected a string"),
-                attrs[1].as_str().expect("expected a string"),
-                attrs[2].as_str().expect("expected a string"),
-                attrs[3].as_str().expect("expected a string"),
-                attrs[4].as_str().expect("expected a string"),
-                attrs[5].as_str().expect("expected a string"),
-            );
-
-            self.syn_attr_cache.insert(synid, attrs);
+    fn get_synattr(&self, synid: usize) -> Result<SynAttr, NvimError> {
+        if let Some(attrs) = self.syn_attr_cache.borrow().get(&synid) {
+            return Ok(attrs.clone())
         }
 
-        Ok(self.syn_attr_cache.get(&synid).unwrap())
+        // use map to reduce rpc calls
+        let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
+        let attrs = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, 'gui')", synid)) ))?;
+
+        let attrs = attrs.as_array().expect("expected an array");
+        let attrs = SynAttr::new(
+            attrs[0].as_str().expect("expected a string"),
+            attrs[1].as_str().expect("expected a string"),
+            attrs[2].as_str().expect("expected a string"),
+            attrs[3].as_str().expect("expected a string"),
+            attrs[4].as_str().expect("expected a string"),
+            attrs[5].as_str().expect("expected a string"),
+        );
+
+        self.syn_attr_cache.borrow_mut().insert(synid, attrs.clone());
+        Ok(attrs)
     }
 
     fn request<T>(&self, command: &str, args: T) -> Result<rmp::Value, NvimError> where T: Serialize {
@@ -245,7 +246,7 @@ impl<'a> Nvim<'a> {
         }
     }
 
-    fn reset(&mut self) -> Result<(), NvimError> {
+    fn reset(&self) -> Result<(), NvimError> {
         // self.syn_attr_cache.clear();
 
         // clear vim buffer
