@@ -3,6 +3,7 @@ extern crate rmp_serde;
 extern crate serde;
 
 use std::process::ChildStdout;
+use std::sync::Mutex;
 
 use self::serde::{Serialize, Deserialize};
 use nvim::NvimError;
@@ -11,34 +12,37 @@ pub type MsgId = u32;
 pub type Deserializer = rmp_serde::Deserializer<ChildStdout>;
 pub type Serializer<'a> = rmp_serde::Serializer<'a, rmp_serde::encode::StructArrayWriter>;
 
-pub struct Transport<'a> {
+struct SerializeWrapper<'a> {
     msg_id:         MsgId,
-    deserializer:   Deserializer,
     serializer:     Serializer<'a>,
+}
+
+pub struct Transport<'a> {
+    deserializer:   Mutex<Deserializer>,
+    serializer:     Mutex<SerializeWrapper<'a>>,
 }
 
 impl<'a> Transport<'a> {
     pub fn new(serializer: Serializer<'a>, deserializer: Deserializer) -> Self {
         Transport {
-            serializer: serializer,
-            deserializer: deserializer,
-            msg_id: 100,
+            serializer: Mutex::new(SerializeWrapper{msg_id: 100, serializer: serializer}),
+            deserializer: Mutex::new(deserializer),
         }
     }
 
     pub fn send<T>(&mut self, command: &str, args: T) -> Result<MsgId, NvimError>
             where T: Serialize {
 
-        self.msg_id += 1;
-        let id = self.msg_id;
+        let mut serializer = self.serializer.lock().unwrap();
+        serializer.msg_id += 1;
+        let id = serializer.msg_id;
         let value = ( 0, id, command, args );
-        value.serialize(&mut self.serializer)?;
-        Ok(self.msg_id)
+        value.serialize(&mut serializer.serializer)?;
+        Ok(id)
     }
 
     pub fn recv(&mut self) -> Result<Option<(u32, rmp::Value)>, NvimError> {
-
-        let value: rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer)?;
+        let value: rmp_serde::Value = Deserialize::deserialize(&mut *self.deserializer.lock().unwrap())?;
         let value = value.as_array().expect("expected an array");
         // println!("\n{:?}", value);
         match value[0].as_u64().expect("expected an int") {

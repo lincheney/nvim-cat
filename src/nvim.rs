@@ -72,7 +72,7 @@ impl Handle {
 }
 
 impl<'a> Nvim<'a> {
-    pub fn start_process() -> Child {
+    fn start_process() -> Child {
         Command::new("nvim")
             .arg("--embed")
             .arg("-n")
