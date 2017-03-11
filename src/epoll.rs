@@ -63,17 +63,17 @@ impl Poller {
         epoll_ctl(self.epfd, libc::EPOLL_CTL_DEL, fd, libc::EPOLLIN as u32)
     }
 
-    pub fn next(&mut self, timeout: i32) -> Option<RawFd> {
+    pub fn next(&mut self, timeout: i32) -> io::Result<Option<RawFd>> {
         self.index += 1;
         if self.index >= self.length {
-            self.length = epoll_wait(self.epfd, timeout, &mut self.buffer).unwrap();
+            self.length = epoll_wait(self.epfd, timeout, &mut self.buffer)?;
             self.index = 0;
         }
 
         if self.length != 0 {
-            Some(self.buffer[self.index].u64 as RawFd)
+            Ok(Some(self.buffer[self.index].u64 as RawFd))
         } else {
-            None
+            Ok(None)
         }
     }
 }

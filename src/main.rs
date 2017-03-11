@@ -7,7 +7,9 @@ extern crate libc;
 extern crate clap;
 
 use std::fs::File;
-use std::io::{stdout, stderr, Write, BufReader, BufRead, ErrorKind};
+use std::io::{stderr, Write, BufReader, BufRead, ErrorKind};
+use std::os::unix::io::{AsRawFd, RawFd};
+use std::sync::mpsc::Sender;
 use clap::{Arg, App};
 
 macro_rules! print_error(
@@ -19,12 +21,16 @@ macro_rules! print_error(
     })
 );
 
+mod rpc;
 mod nvim;
+mod epoll;
 mod synattr;
+
+use nvim::{Nvim, Handle};
 
 fn dump_file(
         filename: &str,
-        nvim: &mut nvim::Nvim,
+        nvim: &Handle,
         filetype: Option<&str>,
         ) -> Result<(), nvim::NvimError> {
 
@@ -33,27 +39,22 @@ fn dump_file(
 
     match filetype {
         Some(filetype) => {
-            nvim.nvim_command(&format!("set ft={}", filetype))?;
+            nvim.nvim_command(format!("set ft={}", filetype));
         },
         None => {
-            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file))?;
+            nvim.nvim_command(format!("set ft= | doautocmd BufRead {}", file));
         }
     }
 
     let file = File::open(file)?;
     let file = BufReader::new(&file);
-    let mut lineno = 2;
 
-    for line in file.lines() {
+    for (i, line) in file.lines().enumerate() {
         let line = line?;
-        nvim.add_line(&line)?;
-        let line = nvim.get_line(&line, lineno)?;
-        stdout().write(line.as_bytes())?;
-        stdout().write(b"\x1b[0m\n")?;
-        lineno += 1;
+        nvim.add_line(line, i+2);
     }
 
-    nvim.reset()?;
+    nvim.reset();
     Ok(())
 }
 
@@ -83,18 +84,15 @@ fn main() {
         None => vec!["-"],
     };
 
-    let process = nvim::Nvim::start_process();
-    let stdout = process.stdout.unwrap();
-    let mut stdin = process.stdin.unwrap();
-
-    let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
+    let nvim = Nvim::start_thread();
 
     for &file in files.iter() {
-        match dump_file(file, &mut nvim, filetype) {
+        match dump_file(file, &nvim, filetype) {
             Ok(_) => (),
             Err(nvim::NvimError::IOError(ref e)) if e.kind() == ErrorKind::BrokenPipe => break,
             Err(e) => { print_error!("{}: {}", file, e); },
         }
     }
-    nvim.quit().unwrap();
+
+    nvim.quit();
 }

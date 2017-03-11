@@ -4,13 +4,18 @@ extern crate serde;
 
 use std;
 use std::collections::HashMap;
-use std::io::{stderr, Write};
+use std::io::{stdout, Write};
 use std::cell::RefCell;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
+
+use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::{Arc, Barrier};
+use std::thread;
 
 use self::rmp_serde::{Serializer, Deserializer};
 use self::serde::{Serialize, Deserialize};
 use synattr::{SynAttr, DEFAULT_ATTR};
+use rpc::{Transport, MsgId};
 
 const BUFNUM: usize = 1;
 const INIT_COMMAND: &'static str =
@@ -27,10 +32,43 @@ quick_error! {
 }
 
 pub struct Nvim<'a> {
-    deserializer:   Deserializer<ChildStdout>,
-    serializer:     RefCell<Serializer<'a, rmp_serde::encode::StructArrayWriter> >,
+    transport:      RefCell<Transport<'a>>,
     syn_attr_cache: HashMap<usize, SynAttr>,
-    rpc_id:         u32,
+    barrier:        Arc<Barrier>,
+}
+
+pub struct Handle {
+    tx:             Sender<Payload>,
+    handle:         thread::JoinHandle<()>,
+    barrier:        Arc<Barrier>,
+}
+
+pub enum Payload {
+    Data(String, usize),
+    Command(String),
+    Reset,
+    Quit,
+}
+
+impl Handle {
+    pub fn add_line(&self, line: String, lineno: usize) {
+        self.tx.send(Payload::Data(line, lineno)).unwrap();
+    }
+
+    pub fn quit(self) {
+        self.tx.send(Payload::Quit).unwrap();
+        self.handle.join().unwrap();
+    }
+
+    pub fn nvim_command(&self, command: String) {
+        self.tx.send(Payload::Command(command)).unwrap();
+        self.barrier.wait();
+    }
+
+    pub fn reset(&self) {
+        self.tx.send(Payload::Reset).unwrap();
+        self.barrier.wait();
+    }
 }
 
 impl<'a> Nvim<'a> {
@@ -45,37 +83,79 @@ impl<'a> Nvim<'a> {
             .expect("could not find nvim")
     }
 
-    pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout) -> Self {
+    fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout, barrier: Arc<Barrier>) -> Self {
         let serializer = Serializer::new(stdin);
         let deserializer = Deserializer::new(stdout);
+        let transport = Transport::new(serializer, deserializer);
 
         Nvim {
-            deserializer: deserializer,
-            serializer: RefCell::new(serializer),
+            transport: RefCell::new(transport),
             syn_attr_cache: HashMap::new(),
-            rpc_id: 100,
+            barrier: barrier,
         }
     }
 
-    pub fn nvim_command(&mut self, command: &str) -> Result<(), NvimError> {
+    pub fn start_thread() -> Handle {
+        let (tx, rx) = channel();
+        let barrier = Arc::new(Barrier::new(2));
+
+        let barrier_copy = barrier.clone();
+        let handle = thread::spawn(move || {
+            let process = Self::start_process();
+            let stdout = process.stdout.unwrap();
+            let mut stdin = process.stdin.unwrap();
+            let mut nvim = Nvim::new(&mut stdin, stdout, barrier_copy);
+            nvim.main_loop(rx);
+        });
+
+        Handle{tx: tx, handle: handle, barrier: barrier.clone()}
+    }
+
+    fn main_loop(&mut self, rx: Receiver<Payload>) -> Result<(), NvimError> {
+        loop {
+            match rx.recv() {
+                Ok(Payload::Data(line, lineno)) => {
+                    self.add_line(&line, lineno)?;
+                    let line = self.get_line(&line, lineno)?;
+                    stdout().write(line.as_bytes())?;
+                    stdout().write(b"\x1b[0m\n")?;
+                },
+                Ok(Payload::Quit) => {
+                    return self.quit();
+                },
+                Ok(Payload::Reset) => {
+                    self.reset();
+                    self.barrier.wait();
+                },
+                Ok(Payload::Command(command)) => {
+                    self.nvim_command(&command)?;
+                    self.barrier.wait();
+                },
+                Err(_) => break,
+            }
+        }
+        Ok(())
+    }
+
+    fn nvim_command(&self, command: &str) -> Result<(), NvimError> {
         self.request("nvim_command", (command,))?;
         Ok(())
     }
 
-    pub fn quit(&mut self) -> Result<(), NvimError> {
+    fn quit(&self) -> Result<(), NvimError> {
         // don't wait for response, nvim will have quit by then
         self.send_request("nvim_command", ("qa!",))?;
         Ok(())
     }
 
     // add @line to vim
-    pub fn add_line(&mut self, line: &String) -> Result<(), NvimError> {
+    fn add_line(&self, line: &String, lineno: usize) -> Result<(), NvimError> {
         self.request("buffer_insert", (BUFNUM, -1, &[line]))?;
         Ok(())
     }
 
     // get @line from vim
-    pub fn get_line(&mut self, line: &String, lineno: usize) -> Result<String, NvimError> {
+    fn get_line(&mut self, line: &String, lineno: usize) -> Result<String, NvimError> {
         // get syntax ids for each char in line
         let synids = self.get_synid(lineno, line.len())?;
         let synids = synids.as_array().expect("expected an array");
@@ -115,7 +195,7 @@ impl<'a> Nvim<'a> {
     }
 
     // get syn ids for line @lineno which has length @length
-    fn get_synid(&mut self, lineno: usize, length: usize) -> Result<rmp::Value, NvimError> {
+    fn get_synid(&self, lineno: usize, length: usize) -> Result<rmp::Value, NvimError> {
         // use map to reduce rpc calls
         let range: Vec<usize> = (1..length+1).collect();
         let args = (range, format!("synIDtrans(synID({}, v:val, 0))", lineno));
@@ -145,54 +225,27 @@ impl<'a> Nvim<'a> {
         Ok(self.syn_attr_cache.get(&synid).unwrap())
     }
 
-    pub fn request<T>(&mut self, command: &str, args: T) -> Result<rmp::Value, NvimError> where T: Serialize {
+    fn request<T>(&self, command: &str, args: T) -> Result<rmp::Value, NvimError> where T: Serialize {
         let id = self.send_request(command, args)?;
         self.wait_for_response(id)
     }
 
-    fn send_request<T>(&mut self, command: &str, args: T) -> Result<u32, NvimError> where T: Serialize {
-        self.rpc_id += 1;
-        let value = ( 0, self.rpc_id, command, args );
-        value.serialize(&mut *self.serializer.borrow_mut())?;
-        Ok(self.rpc_id)
+    fn send_request<T>(&self, command: &str, args: T) -> Result<MsgId, NvimError>
+            where T: Serialize {
+        self.transport.borrow_mut().send(command, args)
     }
 
-    fn wait_for_response(&mut self, id: u32) -> Result<rmp::Value, NvimError> {
-        let id = id as u64;
+    fn wait_for_response(&self, id: MsgId) -> Result<rmp::Value, NvimError> {
         loop {
-            let value : rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer)?;
-            let value = value.as_array().expect("expected an array");
-            // println!("\n{:?}", value);
-            match value[0].as_u64().expect("expected an int") {
-                1 => {
-                    // response
-                    let err_msg = if ! value[2].is_nil() {
-                        Some(value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string"))
-                    } else {
-                        None
-                    };
-
-                    if value[1].as_u64().expect("expected an int") == id {
-                        if let Some(err_msg) = err_msg {
-                            return Err(NvimError::RpcError(err_msg.to_string()));
-                        }
-                        return Ok(value[3].clone());
-                    }
-
-                    if let Some(err_msg) = err_msg {
-                        // error from something else?
-                        print_error!("{}", err_msg);
-                    }
-                },
-                2 => {
-                    // notification
-                },
-                _ => (),
+            if let Some((got_id, value)) = self.transport.borrow_mut().recv()? {
+                if got_id == id {
+                    return Ok(value)
+                }
             }
         }
     }
 
-    pub fn reset(&mut self) -> Result<(), NvimError> {
+    fn reset(&mut self) -> Result<(), NvimError> {
         // self.syn_attr_cache.clear();
 
         // clear vim buffer
