@@ -32,7 +32,7 @@ quick_error! {
 }
 
 pub struct Nvim<'a> {
-    transport:      RefCell<Transport<'a>>,
+    transport:      Transport<'a>,
     syn_attr_cache: HashMap<usize, SynAttr>,
     barrier:        Arc<Barrier>,
 }
@@ -89,13 +89,13 @@ impl<'a> Nvim<'a> {
         let transport = Transport::new(serializer, deserializer);
 
         Nvim {
-            transport: RefCell::new(transport),
+            transport: transport,
             syn_attr_cache: HashMap::new(),
             barrier: barrier,
         }
     }
 
-    pub fn start_thread() -> Handle {
+    pub fn start() -> Handle {
         let (tx, rx) = channel();
         let barrier = Arc::new(Barrier::new(2));
 
@@ -198,7 +198,7 @@ impl<'a> Nvim<'a> {
     fn get_synid(&self, lineno: usize, length: usize) -> Result<rmp::Value, NvimError> {
         // use map to reduce rpc calls
         let range: Vec<usize> = (1..length+1).collect();
-        let args = (range, format!("synIDtrans(synID({}, v:val, 0))", lineno));
+        let args = (range, format!("synID({}, v:val, 0)", lineno));
         self.request("vim_call_function", ("map", args))
     }
 
@@ -207,7 +207,7 @@ impl<'a> Nvim<'a> {
         if ! self.syn_attr_cache.contains_key(&synid) {
             // use map to reduce rpc calls
             let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
-            let attrs = self.request("vim_call_function", ("map", (attrs, format!("synIDattr({}, v:val, 'gui')", synid)) ))?;
+            let attrs = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, 'gui')", synid)) ))?;
 
             let attrs = attrs.as_array().expect("expected an array");
             let attrs = SynAttr::new(
@@ -232,12 +232,12 @@ impl<'a> Nvim<'a> {
 
     fn send_request<T>(&self, command: &str, args: T) -> Result<MsgId, NvimError>
             where T: Serialize {
-        self.transport.borrow_mut().send(command, args)
+        self.transport.send(command, args)
     }
 
     fn wait_for_response(&self, id: MsgId) -> Result<rmp::Value, NvimError> {
         loop {
-            if let Some((got_id, value)) = self.transport.borrow_mut().recv()? {
+            if let Some((got_id, value)) = self.transport.recv()? {
                 if got_id == id {
                     return Ok(value)
                 }

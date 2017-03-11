@@ -23,7 +23,7 @@ macro_rules! print_error(
 
 mod rpc;
 mod nvim;
-mod epoll;
+// mod epoll;
 mod synattr;
 
 use nvim::{Nvim, Handle};
@@ -84,7 +84,7 @@ fn main() {
         None => vec!["-"],
     };
 
-    let nvim = Nvim::start_thread();
+    let nvim = Nvim::start();
 
     for &file in files.iter() {
         match dump_file(file, &nvim, filetype) {

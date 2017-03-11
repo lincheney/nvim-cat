@@ -30,7 +30,7 @@ impl<'a> Transport<'a> {
         }
     }
 
-    pub fn send<T>(&mut self, command: &str, args: T) -> Result<MsgId, NvimError>
+    pub fn send<T>(&self, command: &str, args: T) -> Result<MsgId, NvimError>
             where T: Serialize {
 
         let mut serializer = self.serializer.lock().unwrap();
@@ -41,7 +41,7 @@ impl<'a> Transport<'a> {
         Ok(id)
     }
 
-    pub fn recv(&mut self) -> Result<Option<(u32, rmp::Value)>, NvimError> {
+    pub fn recv(&self) -> Result<Option<(u32, rmp::Value)>, NvimError> {
         let value: rmp_serde::Value = Deserialize::deserialize(&mut *self.deserializer.lock().unwrap())?;
         let value = value.as_array().expect("expected an array");
         // println!("\n{:?}", value);
