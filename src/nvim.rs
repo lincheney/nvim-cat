@@ -27,6 +27,7 @@ quick_error! {
         IOError(x: std::io::Error) { from() }
     }
 }
+pub type NvimResult<T> = Result<T, NvimError>;
 
 #[derive(PartialEq, Eq, Debug)]
 struct Line {
@@ -96,27 +97,27 @@ impl<'a> Nvim<'a> {
         }
     }
 
-    pub fn nvim_command(&mut self, command: &str) -> Result<(), NvimError> {
+    pub fn nvim_command(&mut self, command: &str) -> NvimResult<()> {
         let id = self.request("nvim_command", (command,))?;
         self.wait_for_response(id)?;
         Ok(())
     }
 
-    pub fn quit(&self) -> Result<(), NvimError> {
+    pub fn quit(&self) -> NvimResult<()> {
         // don't wait for response, nvim will have quit by then
         self.request("nvim_command", ("qa!",))?;
         Ok(())
     }
 
     // add @line to vim
-    pub fn add_line(&mut self, line: String, lineno: usize) -> Result<(), NvimError> {
+    pub fn add_line(&mut self, line: String, lineno: usize) -> NvimResult<()> {
         let id = self.request("buffer_insert", (BUFNUM, -1, &[&line]))?;
         self.callbacks.insert(id, Callback::AddLine(lineno, line));
         Ok(())
     }
 
     // get syn ids for line @lineno which has length @length
-    fn get_synid(&self, lineno: usize, length: usize) -> Result<MsgId, NvimError> {
+    fn get_synid(&self, lineno: usize, length: usize) -> NvimResult<MsgId> {
         // use map to reduce rpc calls
         let range: Vec<usize> = (1..length+1).collect();
         let args = (range, format!("synID({}, v:val, 0)", lineno));
@@ -124,7 +125,7 @@ impl<'a> Nvim<'a> {
     }
 
     // get @line from vim
-    fn get_line(&self, line: String, synids: Vec<usize>) -> Result<String, NvimError> {
+    fn get_line(&self, line: String, synids: Vec<usize>) -> NvimResult<String> {
         let mut parts = String::with_capacity(line.len());
         let mut prev = self.default_attr.clone();
         let mut start = 0;
@@ -161,7 +162,7 @@ impl<'a> Nvim<'a> {
     }
 
     // get the syn attr for @synid (cached)
-    fn get_synattr(&mut self, synid: usize) -> Result<bool, NvimError> {
+    fn get_synattr(&mut self, synid: usize) -> NvimResult<bool> {
         if self.syn_attr_cache.borrow().contains_key(&synid) {
             return Ok(true)
         }
@@ -174,7 +175,7 @@ impl<'a> Nvim<'a> {
         Ok(false)
     }
 
-    fn print_lines(&mut self) -> Result<(), NvimError> {
+    fn print_lines(&mut self) -> NvimResult<()> {
         while self.queue.peek().map(|l| l.lineno == self.lineno && l.pending.borrow().is_empty()) == Some(true) {
             let line = self.queue.pop().unwrap();
             let line = self.get_line(line.line, line.synids)?;
@@ -186,12 +187,12 @@ impl<'a> Nvim<'a> {
     }
 
 
-    fn request<T>(&self, command: &str, args: T) -> Result<MsgId, NvimError>
+    fn request<T>(&self, command: &str, args: T) -> NvimResult<MsgId>
             where T: Serialize {
         self.writer.borrow_mut().write(command, args)
     }
 
-    fn wait_for_response(&mut self, id: MsgId) -> Result<rmp::Value, NvimError> {
+    fn wait_for_response(&mut self, id: MsgId) -> NvimResult<rmp::Value> {
         loop {
             if let Some((got_id, value)) = self.reader.read()? {
                 if got_id == id {
@@ -201,7 +202,7 @@ impl<'a> Nvim<'a> {
         }
     }
 
-    pub fn reset(&mut self) -> Result<(), NvimError> {
+    pub fn reset(&mut self) -> NvimResult<()> {
         // self.syn_attr_cache.clear();
         self.queue.clear();
         self.lineno = 2;
@@ -213,7 +214,7 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
-    pub fn process_event(&mut self) -> Result<(), NvimError> {
+    pub fn process_event(&mut self) -> NvimResult<()> {
         if let Some((id, value)) = self.reader.read()? {
             if let Some(cb) = self.callbacks.remove(&id) {
                 match cb {

@@ -36,7 +36,7 @@ struct Poller {
 enum PollResult { Stdout, Stdin }
 
 impl Poller {
-    pub fn new(stdout_fd: RawFd) -> Result<Self, nvim::NvimError> {
+    pub fn new(stdout_fd: RawFd) -> nvim::NvimResult<Self> {
         let mut poller = epoll::Poller::new(2)?;
         poller.add_fd(stdout_fd)?;
 
@@ -48,7 +48,7 @@ impl Poller {
         })
     }
 
-    pub fn add_stdin(&mut self, stdin_fd: RawFd) -> Result<(), nvim::NvimError> {
+    pub fn add_stdin(&mut self, stdin_fd: RawFd) -> nvim::NvimResult<()> {
         self.timeout = match self.poller.add_fd(stdin_fd) {
             Ok(_) => {
                 self.stdin_fd = Some(stdin_fd);
@@ -62,14 +62,14 @@ impl Poller {
         Ok(())
     }
 
-    pub fn rm_stdin(&mut self) -> Result<(), nvim::NvimError> {
+    pub fn rm_stdin(&mut self) -> nvim::NvimResult<()> {
         if let Some(fd) = self.stdin_fd.take() {
             self.poller.del_fd(fd)?;
         }
         Ok(())
     }
 
-    pub fn next(&mut self) -> Result<PollResult, nvim::NvimError> {
+    pub fn next(&mut self) -> nvim::NvimResult<PollResult> {
         let result = match self.poller.next(self.timeout)? {
             fd if fd == self.stdin_fd => PollResult::Stdin,
             Some(fd) if fd == self.stdout_fd => PollResult::Stdout,
@@ -85,7 +85,7 @@ fn dump_file(
         nvim: &mut nvim::Nvim,
         poller: &mut Poller,
         filetype: Option<&str>,
-        ) -> Result<(), nvim::NvimError> {
+        ) -> nvim::NvimResult<()> {
 
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     // println!("{}", file);
@@ -127,7 +127,7 @@ fn dump_file(
     Ok(())
 }
 
-fn entrypoint() -> Result<bool, nvim::NvimError> {
+fn entrypoint() -> nvim::NvimResult<bool> {
     let matches = App::new("nvim-cat")
         .about("TODO")
         .arg(Arg::with_name("u")
