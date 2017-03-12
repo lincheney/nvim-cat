@@ -10,6 +10,7 @@ rmp-serde = "0.10"
 libc = "~ 0.2"
 lazy_static = "~ 0.2"
 quick-error = "1.1.0"
+nix = "0.8.0"
 
 [dependencies.clap]
 version = "~ 2.19"

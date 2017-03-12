@@ -3,6 +3,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate quick_error;
 
+extern crate nix;
 extern crate libc;
 extern crate clap;
 
@@ -91,7 +92,7 @@ fn dump_file(
     Ok(())
 }
 
-fn main() {
+fn entrypoint() -> Result<bool, nvim::NvimError> {
     let matches = App::new("nvim-cat")
         .about("TODO")
         .arg(Arg::with_name("u")
@@ -129,11 +130,28 @@ fn main() {
 
     for &file in files.iter() {
         match dump_file(file, &mut nvim, &mut poller, stdout_fd, filetype) {
-            Ok(_) => (),
             Err(nvim::NvimError::IOError(ref e)) if e.kind() == ErrorKind::BrokenPipe => break,
-            Err(e) => { print_error!("{}: {}", file, e); },
+            Err(nvim::NvimError::IOError(e)) => {
+                // get friendly error message
+                let e = nix::errno::Errno::from_i32(e.raw_os_error().unwrap());
+                print_error!("{}: {}", file, e.desc());
+                // try to continue on ioerrors
+            },
+            Err(e) => {
+                print_error!("{}: {:?}", file, e);
+                return Ok(false);
+            },
+            _ => (),
         }
     }
 
-    nvim.quit().unwrap();
+    nvim.quit()?;
+    Ok(true)
+}
+
+fn main() {
+    match entrypoint() {
+        Ok(_) => (),
+        Err(e) => { print_error!("{}", e); },
+    }
 }
