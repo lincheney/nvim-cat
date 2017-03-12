@@ -49,6 +49,7 @@ impl Poller {
     }
 
     pub fn add_stdin(&mut self, stdin_fd: RawFd) -> nvim::NvimResult<()> {
+        self.stdin_fd.take();
         self.timeout = match self.poller.add_fd(stdin_fd) {
             Ok(_) => {
                 self.stdin_fd = Some(stdin_fd);
@@ -58,7 +59,6 @@ impl Poller {
             Err(ref e) if e.kind() == ErrorKind::PermissionDenied => 0,
             Err(e) => return Err(nvim::NvimError::IOError(e)),
         };
-        self.stdin_fd = None;
         Ok(())
     }
 
@@ -146,10 +146,8 @@ fn entrypoint() -> nvim::NvimResult<bool> {
         .get_matches();
 
     let filetype = matches.value_of("ft");
-    let files = match matches.values_of("FILE") {
-        Some(values) => {
-            values.collect::<Vec<&str>>()
-        },
+    let files: Vec<&str> = match matches.values_of("FILE") {
+        Some(values) => values.collect(),
         None => vec!["-"],
     };
 
