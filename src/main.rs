@@ -87,8 +87,6 @@ fn dump_file(
     while nvim.lineno < lineno {
         nvim.process_event()?;
     }
-
-    nvim.reset()?;
     Ok(())
 }
 
@@ -129,7 +127,7 @@ fn entrypoint() -> Result<bool, nvim::NvimError> {
     poller.add_fd(stdout_fd).unwrap();
 
     let mut success = true;
-    for &file in files.iter() {
+    for (i, &file) in files.iter().enumerate() {
         match dump_file(file, &mut nvim, &mut poller, stdout_fd, filetype) {
             Err(nvim::NvimError::IOError(ref e)) if e.kind() == ErrorKind::BrokenPipe => break,
             Err(nvim::NvimError::IOError(e)) => {
@@ -146,6 +144,8 @@ fn entrypoint() -> Result<bool, nvim::NvimError> {
             },
             _ => (),
         }
+
+        if i != files.len()-1 { nvim.reset()?; }
     }
 
     nvim.quit()?;
