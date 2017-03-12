@@ -128,6 +128,7 @@ fn entrypoint() -> Result<bool, nvim::NvimError> {
     let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
     poller.add_fd(stdout_fd).unwrap();
 
+    let mut success = true;
     for &file in files.iter() {
         match dump_file(file, &mut nvim, &mut poller, stdout_fd, filetype) {
             Err(nvim::NvimError::IOError(ref e)) if e.kind() == ErrorKind::BrokenPipe => break,
@@ -135,23 +136,27 @@ fn entrypoint() -> Result<bool, nvim::NvimError> {
                 // get friendly error message
                 let e = nix::errno::Errno::from_i32(e.raw_os_error().unwrap());
                 print_error!("{}: {}", file, e.desc());
+                success = false;
                 // try to continue on ioerrors
             },
             Err(e) => {
                 print_error!("{}: {:?}", file, e);
-                return Ok(false);
+                success = false;
+                break;
             },
             _ => (),
         }
     }
 
     nvim.quit()?;
-    Ok(true)
+    Ok(success)
 }
 
 fn main() {
-    match entrypoint() {
-        Ok(_) => (),
-        Err(e) => { print_error!("{}", e); },
-    }
+    let exit_code = match entrypoint() {
+        Ok(true) => 0,
+        Ok(false) => 1,
+        Err(e) => { print_error!("{}", e); 1 },
+    };
+    std::process::exit(exit_code);
 }
