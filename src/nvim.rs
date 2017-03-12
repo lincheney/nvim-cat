@@ -204,6 +204,7 @@ impl<'a> Nvim<'a> {
     pub fn reset(&mut self) -> Result<(), NvimError> {
         // self.syn_attr_cache.clear();
         self.queue.clear();
+        self.lineno = 2;
 
         // clear vim buffer
         let lines: [&str; 0] = [];
