@@ -9,7 +9,6 @@ extern crate clap;
 use std::fs::File;
 use std::io::{stderr, Write, BufReader, BufRead, ErrorKind};
 use std::os::unix::io::{AsRawFd, RawFd};
-use std::sync::mpsc::Sender;
 use clap::{Arg, App};
 
 macro_rules! print_error(
@@ -50,7 +49,7 @@ fn dump_file(
     let stdin_fd = file.as_raw_fd();
     let file = BufReader::new(&file);
 
-    let mut timeout = match poller.add_fd(stdin_fd) {
+    let timeout = match poller.add_fd(stdin_fd) {
         Ok(_) => -1,
         // EPERM: cannot epoll this file
         Err(ref e) if e.kind() == ErrorKind::PermissionDenied => 0,
@@ -78,7 +77,7 @@ fn dump_file(
                 nvim.add_line(line, lineno)?;
                 lineno += 1;
             } else {
-                if timeout == -1 { poller.del_fd(stdin_fd); }
+                if timeout == -1 { poller.del_fd(stdin_fd)?; }
                 break;
             }
         }
