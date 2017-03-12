@@ -6,11 +6,12 @@ use std;
 use std::collections::{HashMap, HashSet, BinaryHeap};
 use std::io::{stdout, Write};
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
 use self::rmp_serde::{Serializer, Deserializer};
 use self::serde::Serialize;
-use synattr::{SynAttr, DEFAULT_ATTR};
+use synattr::{SynAttr, default_attr};
 use rpc::{Reader, Writer, MsgId};
 
 const BUFNUM: usize = 1;
@@ -51,13 +52,10 @@ pub enum Callback {
     AddLine(usize, String),
     GetSynId(usize, String),
     GetSynAttr(usize),
-    // Command(String),
-    // Reset,
-    // Quit,
 }
 
 enum FutureSynAttr {
-    Result(SynAttr),
+    Result(Rc<SynAttr>),
     Pending,
 }
 
@@ -68,6 +66,7 @@ pub struct Nvim<'a> {
     callbacks:      HashMap<MsgId, Callback>,
     queue:          BinaryHeap<Line>,
     pub lineno:     usize,
+    default_attr:   Rc<SynAttr>,
 }
 
 impl<'a> Nvim<'a> {
@@ -93,6 +92,7 @@ impl<'a> Nvim<'a> {
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
             lineno: 2,
+            default_attr: Rc::new(default_attr()),
         }
     }
 
@@ -126,7 +126,7 @@ impl<'a> Nvim<'a> {
     // get @line from vim
     fn get_line(&self, line: String, synids: Vec<usize>) -> Result<String, NvimError> {
         let mut parts = String::with_capacity(line.len());
-        let mut prev: SynAttr = DEFAULT_ATTR.clone();
+        let mut prev = self.default_attr.clone();
         let mut start = 0;
         for (synid, end) in synids.into_iter().zip(0..line.len()) {
             let attr = match self.syn_attr_cache.borrow().get(&synid) {
@@ -252,8 +252,8 @@ impl<'a> Nvim<'a> {
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
                         );
+                        self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Result(Rc::new(attrs)));
 
-                        self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Result(attrs));
                         let mut should_print = false;
                         for line in self.queue.iter() {
                             let removed = line.pending.borrow_mut().remove(&synid);

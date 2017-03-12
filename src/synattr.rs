@@ -52,15 +52,17 @@ lazy_static! {
         m.insert("white", 15);
         m
     };
+}
 
-    pub static ref DEFAULT_ATTR: SynAttr = SynAttr{
+pub fn default_attr() -> SynAttr {
+    SynAttr{
         fg: "".to_string(),
         bg: "".to_string(),
         bold: NOBOLD,
         reverse: NOREVERSE,
         italic: ITALIC,
         underline: NOUNDERLINE,
-    };
+    }
 }
 
 fn parse_colour(string: &str) -> Option<String> {
