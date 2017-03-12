@@ -37,7 +37,7 @@ enum PollResult { Stdout, Stdin }
 
 impl Poller {
     pub fn new(stdout_fd: RawFd) -> Result<Self, nvim::NvimError> {
-        let mut poller = epoll::Poller::new(2);
+        let mut poller = epoll::Poller::new(2)?;
         poller.add_fd(stdout_fd)?;
 
         Ok(Poller {

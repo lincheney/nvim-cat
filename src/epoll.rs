@@ -39,20 +39,20 @@ pub struct Poller{
 }
 
 impl Poller {
-    pub fn new(bufsize: usize) -> Self {
-        let epfd = epoll_create().unwrap();
+    pub fn new(bufsize: usize) -> io::Result<Self> {
+        let epfd = epoll_create()?;
         let mut buffer = Vec::with_capacity(bufsize);
 
         for _ in 0..bufsize {
             buffer.push( libc::epoll_event{events: 0, u64: 0} );
         }
 
-        Poller {
+        Ok(Poller {
             epfd: epfd,
             buffer: buffer,
             index: 0,
             length: 0,
-        }
+        })
     }
 
     pub fn add_fd(&mut self, fd: RawFd) -> io::Result<()> {
