@@ -36,14 +36,14 @@ fn dump_file(
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     // println!("{}", file);
 
-    // match filetype {
-        // Some(filetype) => {
-            // nvim.nvim_command(format!("set ft={}", filetype));
-        // },
-        // None => {
-            // nvim.nvim_command(format!("set ft= | doautocmd BufRead {}", file));
-        // }
-    // }
+    match filetype {
+        Some(filetype) => {
+            nvim.nvim_command(&format!("set ft={}", filetype))?;
+        },
+        None => {
+            nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file))?;
+        }
+    }
 
     let file = File::open(file)?;
     let stdin_fd = file.as_raw_fd();
@@ -87,7 +87,7 @@ fn dump_file(
         nvim.process_event()?;
     }
 
-    // nvim.reset();
+    nvim.reset()?;
     Ok(())
 }
 
@@ -135,5 +135,5 @@ fn main() {
         }
     }
 
-    // nvim.quit();
+    nvim.quit().unwrap();
 }

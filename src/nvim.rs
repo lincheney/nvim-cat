@@ -96,12 +96,13 @@ impl<'a> Nvim<'a> {
         }
     }
 
-    fn nvim_command(&self, command: &str) -> Result<(), NvimError> {
-        self.request("nvim_command", (command,))?;
+    pub fn nvim_command(&mut self, command: &str) -> Result<(), NvimError> {
+        let id = self.request("nvim_command", (command,))?;
+        self.wait_for_response(id)?;
         Ok(())
     }
 
-    fn quit(&self) -> Result<(), NvimError> {
+    pub fn quit(&self) -> Result<(), NvimError> {
         // don't wait for response, nvim will have quit by then
         self.request("nvim_command", ("qa!",))?;
         Ok(())
@@ -200,12 +201,14 @@ impl<'a> Nvim<'a> {
         }
     }
 
-    fn reset(&self) -> Result<(), NvimError> {
+    pub fn reset(&mut self) -> Result<(), NvimError> {
         // self.syn_attr_cache.clear();
+        self.queue.clear();
 
         // clear vim buffer
         let lines: [&str; 0] = [];
-        self.request("buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines))?;
+        let id = self.request("buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines))?;
+        self.wait_for_response(id)?;
         Ok(())
     }
 
