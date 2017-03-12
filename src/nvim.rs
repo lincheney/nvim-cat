@@ -227,7 +227,7 @@ impl<'a> Nvim<'a> {
 
                         let mut set = HashSet::new();
                         for id in synids.iter() {
-                            if self.get_synattr(*id)? {
+                            if ! self.get_synattr(*id)? {
                                 set.insert(*id);
                             }
                         }
@@ -252,7 +252,8 @@ impl<'a> Nvim<'a> {
                         self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Result(attrs));
                         let mut should_print = false;
                         for line in self.queue.iter() {
-                            if line.pending.borrow_mut().remove(&synid) && line.lineno == self.lineno {
+                            let removed = line.pending.borrow_mut().remove(&synid);
+                            if removed && line.lineno == self.lineno && line.pending.borrow().is_empty() {
                                 should_print = true;
                             }
                         }
@@ -262,6 +263,8 @@ impl<'a> Nvim<'a> {
                         }
                     },
                 }
+            } else {
+                unreachable!();
             }
         }
         Ok(())
