@@ -137,7 +137,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
              .takes_value(true))
         .arg(Arg::with_name("ft")
              .short("f")
-             .long("-ft")
+             .long("ft")
              .value_name("ft")
              .help("Set the filetype to <ft>")
              .takes_value(true))

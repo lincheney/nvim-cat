@@ -74,7 +74,7 @@ impl<'a> Nvim<'a> {
     pub fn start_process() -> Child {
         Command::new("nvim")
             .arg("--embed")
-            .arg("-n")
+            .arg("-nR")
             .arg("-c").arg(INIT_COMMAND)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
