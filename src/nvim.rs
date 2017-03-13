@@ -99,14 +99,18 @@ impl<'a> Nvim<'a> {
         let writer = Writer::new(Serializer::new(stdin));
         let reader = Reader::new(Deserializer::new(stdout));
 
+        let default_attr = Rc::new(default_attr());
+        let mut syn_attr_cache = HashMap::new();
+        syn_attr_cache.insert(0, FutureSynAttr::Result(default_attr.clone()));
+
         Nvim {
             reader: reader,
             writer: RefCell::new(writer),
-            syn_attr_cache: RefCell::new(HashMap::new()),
+            syn_attr_cache: RefCell::new(syn_attr_cache),
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
             lineno: 2,
-            default_attr: Rc::new(default_attr()),
+            default_attr: default_attr,
         }
     }
 
