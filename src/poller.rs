@@ -123,10 +123,11 @@ impl<R> NBBufReader<R> where R: Read {
         if eof {
             if let Some(leftover) = self.leftover.take() {
                 lines.push(leftover);
+            } else {
+                return Ok(None)
             }
         }
 
-        if lines.is_empty() { return Ok(None) }
         Ok(Some(lines))
     }
 }
