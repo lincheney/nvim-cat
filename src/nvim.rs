@@ -60,6 +60,19 @@ enum FutureSynAttr {
     Pending,
 }
 
+fn push_print_str(base: &mut String, string: &str) {
+    let mut start = 0;
+    for (i, c) in string.match_indices(|c: char| c.is_control()) {
+        base.push_str(&string[start..i]);
+        let c = c.chars().next().unwrap() as u8;
+        let c = if c == 0x7f { '?' } else { (c+0x40) as char };
+        base.push('^');
+        base.push(c);
+        start = i;
+    }
+    base.push_str(&string[start..]);
+}
+
 pub struct Nvim<'a> {
     reader:         Reader,
     writer:         RefCell<Writer<'a>>,
@@ -149,7 +162,7 @@ impl<'a> Nvim<'a> {
             prev = attr;
 
             if ! ansi.is_empty() {
-                parts.push_str(&line[start..end]);
+                push_print_str(&mut parts, &line[start..end]);
                 parts.push_str("\x1b[");
                 parts.push_str(&ansi);
                 parts.push_str("m");
@@ -157,7 +170,7 @@ impl<'a> Nvim<'a> {
             }
         }
 
-        parts.push_str(&line[start..]);
+        push_print_str(&mut parts, &line[start..]);
         Ok(parts)
     }
 
