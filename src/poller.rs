@@ -1,7 +1,8 @@
 use epoll;
 use nvim;
+use std;
 use std::os::unix::io::RawFd;
-use std::io::ErrorKind;
+use std::io::{Read, ErrorKind, BufReader, BufRead};
 
 pub struct Poller {
     poller: epoll::Poller,
@@ -54,5 +55,78 @@ impl Poller {
             None => unreachable!(),
         };
         Ok(result)
+    }
+}
+
+struct NBFile<R> {
+    inner: R,
+    fake_eof: bool,
+}
+
+impl<R> Read for NBFile<R> where R: Read {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.fake_eof {
+            return Ok(0)
+        }
+        self.fake_eof = true;
+        self.inner.read(buf)
+    }
+}
+
+pub struct NBBufReader<R> {
+    inner: BufReader<NBFile<R>>,
+    buf: Vec<u8>,
+    leftover: Option<String>,
+}
+
+impl<R> NBBufReader<R> where R: Read {
+    pub fn new(file: R) -> Self {
+        let file = NBFile{ inner: file, fake_eof: false };
+        let reader = std::io::BufReader::new(file);
+
+        NBBufReader{ inner: reader, buf: vec![], leftover: None }
+    }
+
+    pub fn read_lines(&mut self) -> std::io::Result<Option<Vec<String>>> {
+        let mut lines: Vec<String> = vec![];
+        let mut eof = true;
+        loop {
+            self.buf.clear();
+            let len = self.inner.read_until(b'\n', &mut self.buf)?;
+            if len == 0 { break; }
+
+            eof = false;
+            let has_newline = self.buf[len - 1] == b'\n';
+            if has_newline {
+                self.buf.pop();
+                if len > 1 && self.buf[len - 2] == b'\r' {
+                    self.buf.pop();
+                }
+            }
+
+            let string = std::str::from_utf8(&self.buf).unwrap();
+            let string = if let Some(mut leftover) = self.leftover.take() {
+                leftover.push_str(string);
+                leftover
+            } else {
+                string.to_string()
+            };
+
+            if has_newline {
+                lines.push(string);
+            } else {
+                self.leftover = Some(string);
+            }
+        }
+
+        self.inner.get_mut().fake_eof = eof;
+        if eof {
+            if let Some(leftover) = self.leftover.take() {
+                lines.push(leftover);
+            }
+        }
+
+        if lines.is_empty() { return Ok(None) }
+        Ok(Some(lines))
     }
 }

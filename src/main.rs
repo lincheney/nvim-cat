@@ -8,7 +8,7 @@ extern crate libc;
 extern crate clap;
 
 use std::fs::File;
-use std::io::{stderr, Write, BufReader, BufRead, ErrorKind};
+use std::io::{stderr, Write, ErrorKind};
 use std::os::unix::io::AsRawFd;
 use clap::{Arg, App};
 
@@ -45,9 +45,9 @@ fn dump_file(
 
     let file = File::open(file)?;
     poller.add_stdin(file.as_raw_fd())?;
-    let file = BufReader::new(&file);
+    let mut file = poller::NBBufReader::new(file);
+    // let file = BufReader::new(&file);
 
-    let mut lines = file.lines();
     let mut lineno = 2;
 
     loop {
@@ -56,13 +56,17 @@ fn dump_file(
                 nvim.process_event()?;
             },
             poller::PollResult::Stdin => {
-                if let Some(line) = lines.next() {
-                    let line = line?;
-                    nvim.add_line(line, lineno)?;
-                    lineno += 1;
-                } else {
-                    poller.rm_stdin()?;
-                    break;
+                match file.read_lines()? {
+                    Some(lines) => {
+                        for line in lines {
+                            nvim.add_line(line, lineno)?;
+                            lineno += 1;
+                        }
+                    },
+                    None => {
+                        poller.rm_stdin()?;
+                        break;
+                    }
                 }
             },
         }
