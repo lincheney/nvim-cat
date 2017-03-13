@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ascii::AsciiExt;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SynAttr {
     pub fg: String,
     pub bg: String,
@@ -19,6 +19,8 @@ const ITALIC: &'static str = "3";
 const NOITALIC: &'static str = "23";
 const UNDERLINE: &'static str = "4";
 const NOUNDERLINE: &'static str = "24";
+const NOFG: &'static str = "39";
+const NOBG: &'static str = "49";
 
 lazy_static! {
     static ref COLOUR_MAP: HashMap<&'static str, usize> = {
@@ -56,11 +58,11 @@ lazy_static! {
 
 pub fn default_attr() -> SynAttr {
     SynAttr{
-        fg: "".to_string(),
-        bg: "".to_string(),
+        fg: NOFG.to_string(),
+        bg: NOBG.to_string(),
         bold: NOBOLD,
         reverse: NOREVERSE,
-        italic: ITALIC,
+        italic: NOITALIC,
         underline: NOUNDERLINE,
     }
 }
@@ -86,8 +88,8 @@ impl SynAttr {
         let bg = parse_colour(bg);
 
         SynAttr{
-            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { "39".to_string() },
-            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { "49".to_string() },
+            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { NOFG.to_string() },
+            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { NOBG.to_string() },
             bold: if bold.is_empty() { NOBOLD } else { BOLD },
             reverse: if reverse.is_empty() { NOREVERSE } else { REVERSE },
             italic: if italic.is_empty() { NOITALIC } else { ITALIC },
