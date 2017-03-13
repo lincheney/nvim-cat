@@ -97,12 +97,13 @@ fn entrypoint() -> nvim::NvimResult<bool> {
         .get_matches();
 
     let filetype = matches.value_of("ft");
+    let vimrc = matches.value_of("u");
     let files: Vec<&str> = match matches.values_of("FILE") {
         Some(values) => values.collect(),
         None => vec!["-"],
     };
 
-    let process = nvim::Nvim::start_process();
+    let process = nvim::Nvim::start_process(vimrc);
     let stdout = process.stdout.unwrap();
     let mut stdin = process.stdin.unwrap();
 

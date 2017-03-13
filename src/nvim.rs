@@ -88,15 +88,20 @@ pub struct Nvim<'a> {
 }
 
 impl<'a> Nvim<'a> {
-    pub fn start_process() -> Child {
+    pub fn start_process(vimrc: Option<&str>) -> Child {
+        let mut args = vec![];
+        if let Some(vimrc) = vimrc {
+            args.push("-u"); args.push(vimrc);
+        }
+
         Command::new("nvim")
             .arg("--embed")
             .arg("-nZ")
             .arg("-c").arg(INIT_COMMAND)
+            .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .spawn()
-            .expect("could not find nvim")
+            .spawn().expect("could not find nvim")
     }
 
     pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout) -> Self {
