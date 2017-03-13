@@ -60,9 +60,13 @@ enum FutureSynAttr {
     Pending,
 }
 
+fn char_is_control(c: char) -> bool {
+    c != '\t' && c.is_control()
+}
+
 fn push_print_str(base: &mut String, string: &str) {
     let mut start = 0;
-    for (i, c) in string.match_indices(|c: char| c.is_control()) {
+    for (i, c) in string.match_indices(char_is_control) {
         base.push_str(&string[start..i]);
         let c = c.chars().next().unwrap() as u8;
         let c = if c == 0x7f { '?' } else { (c+0x40) as char };
@@ -244,7 +248,9 @@ impl<'a> Nvim<'a> {
                             .as_array()
                             .expect("expected an array")
                             .iter()
-                            .map(|id| id.as_u64().expect("expected int") as usize)
+                            .zip(line.chars())
+                            // highlight control chars with 1 (specialkey)
+                            .map(|(id, c)| if char_is_control(c) { 1 } else { id.as_u64().expect("expected int") as usize } )
                             .collect();
 
                         let mut set = HashSet::new();
