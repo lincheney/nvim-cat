@@ -9,7 +9,7 @@ extern crate clap;
 
 use std::fs::File;
 use std::io::{stderr, Write, BufReader, BufRead, ErrorKind};
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
 use clap::{Arg, App};
 
 macro_rules! print_error(
@@ -25,65 +25,12 @@ mod rpc;
 mod nvim;
 mod epoll;
 mod synattr;
-
-struct Poller {
-    poller: epoll::Poller,
-    timeout: i32,
-    stdout_fd: RawFd,
-    stdin_fd: Option<RawFd>,
-}
-
-enum PollResult { Stdout, Stdin }
-
-impl Poller {
-    pub fn new(stdout_fd: RawFd) -> nvim::NvimResult<Self> {
-        let mut poller = epoll::Poller::new(2)?;
-        poller.add_fd(stdout_fd)?;
-
-        Ok(Poller {
-            poller: poller,
-            timeout: -1,
-            stdout_fd: stdout_fd,
-            stdin_fd: None,
-        })
-    }
-
-    pub fn add_stdin(&mut self, stdin_fd: RawFd) -> nvim::NvimResult<()> {
-        self.stdin_fd.take();
-        self.timeout = match self.poller.add_fd(stdin_fd) {
-            Ok(_) => {
-                self.stdin_fd = Some(stdin_fd);
-                -1
-            },
-            // EPERM: cannot epoll this file
-            Err(ref e) if e.kind() == ErrorKind::PermissionDenied => 0,
-            Err(e) => return Err(nvim::NvimError::IOError(e)),
-        };
-        Ok(())
-    }
-
-    pub fn rm_stdin(&mut self) -> nvim::NvimResult<()> {
-        if let Some(fd) = self.stdin_fd.take() {
-            self.poller.del_fd(fd)?;
-        }
-        Ok(())
-    }
-
-    pub fn next(&mut self) -> nvim::NvimResult<PollResult> {
-        let result = match self.poller.next(self.timeout)? {
-            fd if fd == self.stdin_fd => PollResult::Stdin,
-            Some(fd) if fd == self.stdout_fd => PollResult::Stdout,
-            Some(_) => unreachable!(),
-            None => unreachable!(),
-        };
-        Ok(result)
-    }
-}
+mod poller;
 
 fn dump_file(
         filename: &str,
         nvim: &mut nvim::Nvim,
-        poller: &mut Poller,
+        poller: &mut poller::Poller,
         filetype: Option<&str>,
         ) -> nvim::NvimResult<()> {
 
@@ -105,10 +52,10 @@ fn dump_file(
 
     loop {
         match poller.next()? {
-            PollResult::Stdout => {
+            poller::PollResult::Stdout => {
                 nvim.process_event()?;
             },
-            PollResult::Stdin => {
+            poller::PollResult::Stdin => {
                 if let Some(line) = lines.next() {
                     let line = line?;
                     nvim.add_line(line, lineno)?;
@@ -155,7 +102,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
     let stdout = process.stdout.unwrap();
     let mut stdin = process.stdin.unwrap();
 
-    let mut poller = Poller::new(stdout.as_raw_fd())?;
+    let mut poller = poller::Poller::new(stdout.as_raw_fd())?;
     let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
 
     let mut success = true;
