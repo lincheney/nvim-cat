@@ -81,26 +81,34 @@ fn dump_file(
 fn entrypoint() -> nvim::NvimResult<bool> {
     let matches = App::new("nvim-cat")
         .about("TODO")
-        .arg(Arg::with_name("u")
+        .arg(Arg::with_name("vimrc")
              .short("u")
              .value_name("vimrc")
              .help("Use <vimrc> instead of the default")
              .takes_value(true))
-        .arg(Arg::with_name("ft")
+        .arg(Arg::with_name("filetype")
              .short("f")
              .long("ft")
              .value_name("ft")
              .help("Set the filetype to <ft>")
              .takes_value(true))
+        .arg(Arg::with_name("numbered")
+             .short("n")
+             .long("number")
+             .help("Number output lines"))
         .arg(Arg::with_name("FILE")
              .multiple(true))
         .get_matches();
 
-    let filetype = matches.value_of("ft");
-    let vimrc = matches.value_of("u");
+    let filetype = matches.value_of("filetype");
+    let vimrc = matches.value_of("vimrc");
     let files: Vec<&str> = match matches.values_of("FILE") {
         Some(values) => values.collect(),
         None => vec!["-"],
+    };
+
+    let options = nvim::NvimOptions{
+        numbered: matches.is_present("numbered"),
     };
 
     let process = nvim::Nvim::start_process(vimrc);
@@ -108,7 +116,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
     let mut stdin = process.stdin.unwrap();
 
     let mut poller = poller::Poller::new(stdout.as_raw_fd())?;
-    let mut nvim = nvim::Nvim::new(&mut stdin, stdout);
+    let mut nvim = nvim::Nvim::new(&mut stdin, stdout, options);
 
     let mut success = true;
     for (i, &file) in files.iter().enumerate() {

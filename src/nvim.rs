@@ -77,6 +77,10 @@ fn push_print_str(base: &mut String, string: &str) {
     base.push_str(&string[start..]);
 }
 
+pub struct NvimOptions {
+    pub numbered: bool,
+}
+
 pub struct Nvim<'a> {
     reader:         Reader,
     writer:         RefCell<Writer<'a>>,
@@ -84,6 +88,7 @@ pub struct Nvim<'a> {
     callbacks:      HashMap<MsgId, Callback>,
     queue:          BinaryHeap<Line>,
     pub lineno:     usize,
+    options:        NvimOptions,
     default_attr:   Rc<SynAttr>,
 }
 
@@ -104,7 +109,7 @@ impl<'a> Nvim<'a> {
             .spawn().expect("could not find nvim")
     }
 
-    pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout) -> Self {
+    pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout, options: NvimOptions) -> Self {
         let writer = Writer::new(Serializer::new(stdin));
         let reader = Reader::new(Deserializer::new(stdout));
 
@@ -120,6 +125,7 @@ impl<'a> Nvim<'a> {
             queue: BinaryHeap::new(),
             lineno: 2,
             default_attr: default_attr,
+            options: options,
         }
     }
 
@@ -205,6 +211,11 @@ impl<'a> Nvim<'a> {
         while self.queue.peek().map(|l| l.lineno == self.lineno && l.pending.borrow().is_empty()) == Some(true) {
             let line = self.queue.pop().unwrap();
             let line = self.get_line(line.line, line.synids)?;
+
+            if self.options.numbered {
+                stdout().write(format!("{:6}  ", self.lineno-1).as_bytes())?;
+            }
+
             stdout().write(line.as_bytes())?;
             stdout().write(b"\x1b[0m\n")?;
             self.lineno += 1;
