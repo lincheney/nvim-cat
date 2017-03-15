@@ -32,7 +32,7 @@ pub type NvimResult<T> = Result<T, NvimError>;
 #[derive(PartialEq, Eq, Debug)]
 struct Line {
     pub lineno: usize,
-    pub line: String,
+    pub line: Vec<u8>,
     pub synids: Vec<usize>,
     pub pending: RefCell<HashSet<usize>>,
 }
@@ -50,8 +50,8 @@ impl PartialOrd for Line {
 }
 
 pub enum Callback {
-    AddLine(usize, String),
-    GetSynId(usize, String),
+    AddLine(usize, Vec<u8>),
+    GetSynId(usize, Vec<u8>),
     GetSynAttr(usize),
 }
 
@@ -160,6 +160,7 @@ impl<'a> Nvim<'a> {
     // add @line to vim
     pub fn add_line(&mut self, line: String, lineno: usize) -> NvimResult<()> {
         let id = self.request("buffer_insert", (BUFNUM, lineno, &[&line]))?;
+        let line: Vec<u8> = Vec::from(&line[..]);
         self.callbacks.insert(id, Callback::AddLine(lineno, line));
         Ok(())
     }
@@ -173,8 +174,7 @@ impl<'a> Nvim<'a> {
     }
 
     // get @line from vim
-    fn get_line(&self, line: String, synids: Vec<usize>) -> NvimResult<Vec<u8>> {
-        let line = line.as_bytes();
+    fn get_line(&self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<Vec<u8>> {
         let mut parts: Vec<u8> = Vec::with_capacity(line.len());
         let mut prev = self.default_attr.clone();
         let mut start = 0;
@@ -281,9 +281,9 @@ impl<'a> Nvim<'a> {
                             .as_array()
                             .expect("expected an array")
                             .iter()
-                            .zip(line.chars())
+                            .zip(&line)
                             // highlight control chars with 1 (specialkey)
-                            .map(|(id, c)| if char_is_control(c as u8) { 1 } else { id.as_u64().expect("expected int") as usize } )
+                            .map(|(id, c)| if char_is_control(*c) { 1 } else { id.as_u64().expect("expected int") as usize } )
                             .collect();
 
                         let mut set = HashSet::new();
