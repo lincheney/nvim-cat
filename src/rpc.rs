@@ -42,7 +42,6 @@ impl Reader {
     pub fn read(&mut self) -> Result<Option<(u32, rmp::Value)>, NvimError> {
         let value: rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer)?;
         let value = value.as_array().expect("expected an array");
-        // println!("\n{:?}", value);
         match value[0].as_u64().expect("expected an int") {
             1 => {
                 // response

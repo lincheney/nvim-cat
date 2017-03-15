@@ -37,6 +37,7 @@ fn dump_file(
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     // println!("{}", file);
 
+    nvim.press_enter()?; // press enter now and then to get past blocking error messages
     if let Some(filetype) = filetype {
         nvim.nvim_command(&format!("set ft={}", filetype))?;
     } else {
@@ -46,10 +47,10 @@ fn dump_file(
     let file = File::open(file)?;
     poller.add_stdin(file.as_raw_fd())?;
     let mut file = poller::NBBufReader::new(file);
-    // let file = BufReader::new(&file);
 
     let mut lineno = 0;
     loop {
+        nvim.press_enter()?; // press enter now and then to get past blocking error messages
         match poller.next()? {
             poller::PollResult::Stdout => {
                 nvim.process_event()?;

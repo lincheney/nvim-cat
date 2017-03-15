@@ -112,6 +112,7 @@ impl<'a> Nvim<'a> {
 
         Command::new("nvim")
             .arg("--embed")
+            .arg("--headless")
             .arg("-nm")
             .arg("-c").arg(INIT_COMMAND)
             .args(&args)
@@ -138,6 +139,11 @@ impl<'a> Nvim<'a> {
             default_attr: default_attr,
             options: options,
         }
+    }
+
+    pub fn press_enter(&mut self) -> NvimResult<()> {
+        self.request("vim_input", ("<CR>",))?;
+        Ok(())
     }
 
     pub fn nvim_command(&mut self, command: &str) -> NvimResult<()> {
