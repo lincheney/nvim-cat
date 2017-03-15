@@ -123,7 +123,7 @@ impl<'a> Nvim<'a> {
             syn_attr_cache: RefCell::new(syn_attr_cache),
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
-            lineno: 2,
+            lineno: 0,
             default_attr: default_attr,
             options: options,
         }
@@ -141,9 +141,14 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 
+    pub fn filetype_detect(&self) -> NvimResult<()> {
+        self.request("nvim_command", ("if &ft == '' | filetype detect | endif",))?;
+        Ok(())
+    }
+
     // add @line to vim
     pub fn add_line(&mut self, line: String, lineno: usize) -> NvimResult<()> {
-        let id = self.request("buffer_insert", (BUFNUM, -1, &[&line]))?;
+        let id = self.request("buffer_insert", (BUFNUM, lineno, &[&line]))?;
         self.callbacks.insert(id, Callback::AddLine(lineno, line));
         Ok(())
     }
@@ -152,7 +157,7 @@ impl<'a> Nvim<'a> {
     fn get_synid(&self, lineno: usize, length: usize) -> NvimResult<MsgId> {
         // use map to reduce rpc calls
         let range: Vec<usize> = (1..length+1).collect();
-        let args = (range, format!("synID({}, v:val, 0)", lineno));
+        let args = (range, format!("synID({}, v:val, 0)", lineno+1));
         self.request("vim_call_function", ("map", args))
     }
 
@@ -213,7 +218,7 @@ impl<'a> Nvim<'a> {
             let line = self.get_line(line.line, line.synids)?;
 
             if self.options.numbered {
-                stdout().write(format!("{:6}  ", self.lineno-1).as_bytes())?;
+                stdout().write(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
             stdout().write(line.as_bytes())?;
@@ -242,7 +247,7 @@ impl<'a> Nvim<'a> {
     pub fn reset(&mut self) -> NvimResult<()> {
         // self.syn_attr_cache.clear();
         self.queue.clear();
-        self.lineno = 2;
+        self.lineno = 0;
 
         // clear vim buffer
         let lines: [&str; 0] = [];
@@ -307,8 +312,6 @@ impl<'a> Nvim<'a> {
                         }
                     },
                 }
-            } else {
-                unreachable!();
             }
         }
         Ok(())

@@ -48,8 +48,7 @@ fn dump_file(
     let mut file = poller::NBBufReader::new(file);
     // let file = BufReader::new(&file);
 
-    let mut lineno = 2;
-
+    let mut lineno = 0;
     loop {
         match poller.next()? {
             poller::PollResult::Stdout => {
@@ -60,6 +59,10 @@ fn dump_file(
                     Some(lines) => {
                         for line in lines {
                             nvim.add_line(line, lineno)?;
+                            // run filetype detect over first 10 lines
+                            if filetype.is_none() && lineno < 10 {
+                                nvim.filetype_detect()?;
+                            }
                             lineno += 1;
                         }
                     },
