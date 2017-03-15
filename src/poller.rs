@@ -104,7 +104,7 @@ impl<R> NBBufReader<R> where R: Read {
                 }
             }
 
-            let string = std::str::from_utf8(&self.buf).unwrap();
+            let string = unsafe{ std::str::from_utf8_unchecked(&self.buf) };
             let string = if let Some(mut leftover) = self.leftover.take() {
                 leftover.push_str(string);
                 leftover

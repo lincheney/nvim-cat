@@ -60,21 +60,27 @@ enum FutureSynAttr {
     Pending,
 }
 
-fn char_is_control(c: char) -> bool {
-    c != '\t' && c.is_control()
+fn char_is_control(c: u8) -> bool {
+    match c {
+        0x09 => false, // tab
+        0x7f => true,
+        0...31 => true,
+        _ => false,
+    }
 }
 
-fn push_print_str(base: &mut String, string: &str) {
+fn push_print_str(vec: &mut Vec<u8>, bytes: &[u8]) {
     let mut start = 0;
-    for (i, c) in string.match_indices(char_is_control) {
-        base.push_str(&string[start..i]);
-        let c = c.chars().next().unwrap() as u8;
-        let c = if c == 0x7f { '?' } else { (c+0x40) as char };
-        base.push('^');
-        base.push(c);
-        start = i;
+    for (i, c) in bytes.iter().enumerate() {
+        if char_is_control(*c) {
+            vec.extend_from_slice(&bytes[start..i]);
+            let c = if *c == 0x7f { b'?' } else { c+0x40 };
+            vec.push(b'^');
+            vec.push(c);
+            start = i+1;
+        }
     }
-    base.push_str(&string[start..]);
+    vec.extend_from_slice(&bytes[start..]);
 }
 
 #[derive(Copy, Clone)]
@@ -167,8 +173,9 @@ impl<'a> Nvim<'a> {
     }
 
     // get @line from vim
-    fn get_line(&self, line: String, synids: Vec<usize>) -> NvimResult<String> {
-        let mut parts = String::with_capacity(line.len());
+    fn get_line(&self, line: String, synids: Vec<usize>) -> NvimResult<Vec<u8>> {
+        let line = line.as_bytes();
+        let mut parts: Vec<u8> = Vec::with_capacity(line.len());
         let mut prev = self.default_attr.clone();
         let mut start = 0;
         for (synid, end) in synids.into_iter().zip(0..line.len()) {
@@ -192,9 +199,9 @@ impl<'a> Nvim<'a> {
 
             if ! ansi.is_empty() {
                 push_print_str(&mut parts, &line[start..end]);
-                parts.push_str("\x1b[");
-                parts.push_str(&ansi);
-                parts.push_str("m");
+                parts.extend_from_slice(b"\x1b[");
+                parts.extend_from_slice(&ansi.as_bytes());
+                parts.push(b'm');
                 start = end;
             }
         }
@@ -226,7 +233,7 @@ impl<'a> Nvim<'a> {
                 stdout().write(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
-            stdout().write(line.as_bytes())?;
+            stdout().write(&line)?;
             stdout().write(b"\x1b[0m\n")?;
             self.lineno += 1;
         }
@@ -276,7 +283,7 @@ impl<'a> Nvim<'a> {
                             .iter()
                             .zip(line.chars())
                             // highlight control chars with 1 (specialkey)
-                            .map(|(id, c)| if char_is_control(c) { 1 } else { id.as_u64().expect("expected int") as usize } )
+                            .map(|(id, c)| if char_is_control(c as u8) { 1 } else { id.as_u64().expect("expected int") as usize } )
                             .collect();
 
                         let mut set = HashSet::new();
