@@ -106,7 +106,7 @@ impl<'a> Nvim<'a> {
 
         Command::new("nvim")
             .arg("--embed")
-            .arg("-n")
+            .arg("-nm")
             .arg("-c").arg(INIT_COMMAND)
             .args(&args)
             .stdin(Stdio::piped())
