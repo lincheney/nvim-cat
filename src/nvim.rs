@@ -329,3 +329,10 @@ impl<'a> Nvim<'a> {
         Ok(())
     }
 }
+
+impl<'a> Drop for Nvim<'a> {
+    fn drop(&mut self) {
+        // ignore errors
+        self.quit().ok();
+    }
+}
