@@ -144,7 +144,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
             _ => (),
         }
 
-        if i != files.len() { nvim.reset()?; }
+        if i < files.len()-1 { nvim.reset()?; }
     }
 
     nvim.quit()?;
