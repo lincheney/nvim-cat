@@ -77,8 +77,10 @@ fn push_print_str(base: &mut String, string: &str) {
     base.push_str(&string[start..]);
 }
 
+#[derive(Copy, Clone)]
 pub struct NvimOptions {
     pub numbered: bool,
+    pub restricted_mode: bool,
 }
 
 pub struct Nvim<'a> {
@@ -93,15 +95,18 @@ pub struct Nvim<'a> {
 }
 
 impl<'a> Nvim<'a> {
-    pub fn start_process(vimrc: Option<&str>) -> Child {
+    pub fn start_process(vimrc: Option<&str>, options: NvimOptions) -> Child {
         let mut args = vec![];
         if let Some(vimrc) = vimrc {
             args.push("-u"); args.push(vimrc);
         }
+        if options.restricted_mode {
+            args.push("-Z");
+        }
 
         Command::new("nvim")
             .arg("--embed")
-            .arg("-nZ")
+            .arg("-n")
             .arg("-c").arg(INIT_COMMAND)
             .args(&args)
             .stdin(Stdio::piped())

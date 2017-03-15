@@ -99,6 +99,9 @@ fn entrypoint() -> nvim::NvimResult<bool> {
              .short("n")
              .long("number")
              .help("Number output lines"))
+        .arg(Arg::with_name("restricted_mode")
+             .short("Z")
+             .help("Restricted mode"))
         .arg(Arg::with_name("FILE")
              .multiple(true))
         .get_matches();
@@ -112,9 +115,10 @@ fn entrypoint() -> nvim::NvimResult<bool> {
 
     let options = nvim::NvimOptions{
         numbered: matches.is_present("numbered"),
+        restricted_mode: matches.is_present("restricted_mode"),
     };
 
-    let process = nvim::Nvim::start_process(vimrc);
+    let process = nvim::Nvim::start_process(vimrc, options);
     let stdout = process.stdout.unwrap();
     let mut stdin = process.stdin.unwrap();
 
