@@ -43,6 +43,7 @@ fn dump_file(
     } else {
         nvim.nvim_command(&format!("set ft= | doautocmd BufRead {}", file))?;
     }
+    nvim.press_enter()?; // press enter now and then to get past blocking error messages
 
     let file = File::open(file)?;
     poller.add_stdin(file.as_raw_fd())?;
@@ -50,12 +51,12 @@ fn dump_file(
 
     let mut lineno = 0;
     loop {
-        nvim.press_enter()?; // press enter now and then to get past blocking error messages
         match poller.next()? {
             poller::PollResult::Stdout => {
                 nvim.process_event()?;
             },
             poller::PollResult::Stdin => {
+                nvim.press_enter()?; // press enter now and then to get past blocking error messages
                 match file.read_lines()? {
                     Some(lines) => {
                         for line in lines {
