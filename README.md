@@ -1,2 +1,2 @@
 # nvim-cat
-cat files with neovim syntax highlighting
+Command line syntax highlighting using the power of Neovim 
