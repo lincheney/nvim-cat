@@ -197,7 +197,7 @@ impl<'a> Nvim<'a> {
                 if attr.bold != prev.bold { ansi.push(&attr.bold) }
                 if attr.reverse != prev.reverse { ansi.push(&attr.reverse) }
                 if attr.italic != prev.italic { ansi.push(&attr.italic) }
-                if attr.reverse != prev.reverse { ansi.push(&attr.reverse) }
+                if attr.underline != prev.underline { ansi.push(&attr.underline) }
                 ansi.join(";")
             };
 
