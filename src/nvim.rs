@@ -64,7 +64,7 @@ fn char_is_control(c: u8) -> bool {
     match c {
         0x09 => false, // tab
         0x7f => true,
-        0...31 => true,
+        0..=31 => true,
         _ => false,
     }
 }

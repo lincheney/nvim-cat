@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ascii::AsciiExt;
 
 #[derive(Clone, Debug)]
 pub struct SynAttr {
