@@ -7,10 +7,12 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v1
-    - name: Build
-      run: cargo build --verbose
+      - uses: actions/checkout@v1
+      - name: Build
+        run: cargo build --verbose --release
+      - uses: actions/upload-artifact@master
+        with:
+          name: nvim-cat
+          path: target/release/nvim-cat
