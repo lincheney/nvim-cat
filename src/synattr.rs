@@ -11,7 +11,7 @@ pub struct SynAttr {
 }
 
 const BOLD: &'static str = "1";
-const NOBOLD: &'static str = "21";
+const NOBOLD: &'static str = "22";
 const REVERSE: &'static str = "7";
 const NOREVERSE: &'static str = "27";
 const ITALIC: &'static str = "3";
