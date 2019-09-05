@@ -224,7 +224,7 @@ impl<'a> Nvim<'a> {
 
         // use map to reduce rpc calls
         let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
-        let id = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, 'gui')", synid)) ))?;
+        let id = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, &termguicolors ? 'gui' : 'cterm')", synid)) ))?;
         self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Pending);
         self.callbacks.insert(id, Callback::GetSynAttr(synid));
         Ok(false)

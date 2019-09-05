@@ -22,7 +22,7 @@ const NOFG: &'static str = "39";
 const NOBG: &'static str = "49";
 
 lazy_static! {
-    static ref COLOUR_MAP: HashMap<&'static str, usize> = {
+    static ref COLOUR_MAP: HashMap<&'static str, u8> = {
         let mut m = HashMap::new();
         m.insert("black", 0);
         m.insert("darkblue", 4);
@@ -75,9 +75,10 @@ fn parse_colour(string: &str) -> Option<String> {
         return Some(format!("2;{};{};{}", i>>16, (i>>8)&0xff, i&0xff));
     }
 
-    // named colour
     let string = string.to_ascii_lowercase();
-    COLOUR_MAP.get(&string[..]).map(|i| format!("5;{}", i))
+    let num = string.parse::<u8>().ok()
+        .or(COLOUR_MAP.get(&string[..]).copied());
+    num.map(|i| format!("5;{}", i))
 }
 
 
