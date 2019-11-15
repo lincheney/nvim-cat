@@ -19,9 +19,9 @@ impl Poller {
         poller.add_fd(stdout_fd)?;
 
         Ok(Poller {
-            poller: poller,
+            poller,
             timeout: -1,
-            stdout_fd: stdout_fd,
+            stdout_fd,
             stdin_fd: None,
         })
     }

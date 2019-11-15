@@ -10,16 +10,16 @@ pub struct SynAttr {
     pub underline: &'static str,
 }
 
-const BOLD: &'static str = "1";
-const NOBOLD: &'static str = "22";
-const REVERSE: &'static str = "7";
-const NOREVERSE: &'static str = "27";
-const ITALIC: &'static str = "3";
-const NOITALIC: &'static str = "23";
-const UNDERLINE: &'static str = "4";
-const NOUNDERLINE: &'static str = "24";
-const NOFG: &'static str = "39";
-const NOBG: &'static str = "49";
+const BOLD: &str = "1";
+const NOBOLD: &str = "22";
+const REVERSE: &str = "7";
+const NOREVERSE: &str = "27";
+const ITALIC: &str = "3";
+const NOITALIC: &str = "23";
+const UNDERLINE: &str = "4";
+const NOUNDERLINE: &str = "24";
+const NOFG: &str = "39";
+const NOBG: &str = "49";
 
 lazy_static! {
     static ref COLOUR_MAP: HashMap<&'static str, u8> = {
@@ -69,7 +69,7 @@ pub fn default_attr() -> SynAttr {
 fn parse_colour(string: &str) -> Option<String> {
     if string.is_empty() { return None; }
 
-    if string.chars().next() == Some('#') {
+    if string.starts_with('#') {
         // rgb
         let i = i64::from_str_radix(&string[1..], 16).expect("expected a hex string");
         return Some(format!("2;{};{};{}", i>>16, (i>>8)&0xff, i&0xff));
@@ -77,7 +77,7 @@ fn parse_colour(string: &str) -> Option<String> {
 
     let string = string.to_ascii_lowercase();
     let num = string.parse::<u8>().ok()
-        .or(COLOUR_MAP.get(&string[..]).copied());
+        .or_else(|| COLOUR_MAP.get(&string[..]).copied());
     num.map(|i| format!("5;{}", i))
 }
 

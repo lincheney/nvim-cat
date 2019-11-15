@@ -13,7 +13,7 @@ fn epoll_create() -> io::Result<RawFd> {
 }
 
 fn epoll_ctl(epfd: RawFd, op: i32, fd: RawFd, events: u32) -> io::Result<()> {
-    let mut event = libc::epoll_event{ events: events, u64: fd as u64 };
+    let mut event = libc::epoll_event{ events, u64: fd as u64 };
     let code = unsafe { libc::epoll_ctl(epfd, op, fd, &mut event as *mut libc::epoll_event) };
     if code < 0 {
         Err(io::Error::last_os_error())
@@ -48,8 +48,8 @@ impl Poller {
         }
 
         Ok(Poller {
-            epfd: epfd,
-            buffer: buffer,
+            epfd,
+            buffer,
             index: 0,
             length: 0,
         })

@@ -15,8 +15,7 @@ use synattr::{SynAttr, default_attr};
 use rpc::{Reader, Writer, MsgId};
 
 const BUFNUM: usize = 1;
-const INIT_COMMAND: &'static str =
-    "set scrolloff=0 mouse= showtabline=0 | NoMatchParen";
+const INIT_COMMAND: &str = "set scrolloff=0 mouse= showtabline=0 | NoMatchParen";
 
 quick_error! {
     #[derive(Debug)]
@@ -130,14 +129,14 @@ impl Nvim {
         syn_attr_cache.insert(0, FutureSynAttr::Result(default_attr.clone()));
 
         Nvim {
-            reader: reader,
+            reader,
             writer: RefCell::new(writer),
             syn_attr_cache: RefCell::new(syn_attr_cache),
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
             lineno: 0,
-            default_attr: default_attr,
-            options: options,
+            default_attr,
+            options,
         }
     }
 
@@ -174,7 +173,7 @@ impl Nvim {
     // get syn ids for line @lineno which has length @length
     fn get_synid(&self, lineno: usize, length: usize) -> NvimResult<MsgId> {
         // use map to reduce rpc calls
-        let range: Vec<usize> = (1..length+1).collect();
+        let range: Vec<usize> = (1..=length).collect();
         let args = (range, format!("synID({}, v:val, 0)", lineno+1));
         self.request("vim_call_function", ("map", args))
     }
@@ -236,11 +235,11 @@ impl Nvim {
             let line = self.get_line(line.line, line.synids)?;
 
             if self.options.numbered {
-                stdout().write(format!("{:6}  ", self.lineno+1).as_bytes())?;
+                stdout().write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
-            stdout().write(&line)?;
-            stdout().write(b"\x1b[0m\n")?;
+            stdout().write_all(&line)?;
+            stdout().write_all(b"\x1b[0m\n")?;
             self.lineno += 1;
         }
         Ok(())
@@ -300,7 +299,7 @@ impl Nvim {
                         }
                         let should_print = lineno == self.lineno && set.is_empty();
 
-                        self.queue.push(Line{lineno: lineno, line: line, synids: synids, pending: RefCell::new(set)});
+                        self.queue.push(Line{lineno, line, synids, pending: RefCell::new(set)});
                         if should_print {
                             self.print_lines()?;
                         }

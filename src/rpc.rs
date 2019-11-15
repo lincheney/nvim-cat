@@ -22,7 +22,7 @@ pub struct Reader {
 
 impl Writer {
     pub fn new(serializer: Serializer) -> Self {
-        Writer{ msg_id: 100, serializer: serializer }
+        Writer{ msg_id: 100, serializer }
     }
 
     pub fn write<T>(&mut self, command: &str, args: T) -> Result<MsgId, NvimError>
