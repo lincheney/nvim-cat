@@ -91,7 +91,7 @@ pub struct NvimOptions {
 pub struct Nvim {
     reader:         Reader,
     writer:         Writer,
-    syn_attr_cache: RefCell<HashMap<usize, FutureSynAttr>>,
+    syn_attr_cache: HashMap<usize, FutureSynAttr>,
     callbacks:      HashMap<MsgId, Callback>,
     queue:          BinaryHeap<Line>,
     pub lineno:     usize,
@@ -131,7 +131,7 @@ impl Nvim {
         Nvim {
             reader,
             writer: writer,
-            syn_attr_cache: RefCell::new(syn_attr_cache),
+            syn_attr_cache: syn_attr_cache,
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
             lineno: 0,
@@ -184,7 +184,7 @@ impl Nvim {
         let mut prev = self.default_attr.clone();
         let mut start = 0;
         for (synid, end) in synids.into_iter().zip(0..line.len()) {
-            let attr = match self.syn_attr_cache.borrow().get(&synid) {
+            let attr = match self.syn_attr_cache.get(&synid) {
                 Some(&FutureSynAttr::Result(ref attr)) => attr.clone(),
                 _ => unreachable!(),
             };
@@ -217,14 +217,14 @@ impl Nvim {
 
     // get the syn attr for @synid (cached)
     fn get_synattr(&mut self, synid: usize) -> NvimResult<bool> {
-        if self.syn_attr_cache.borrow().contains_key(&synid) {
+        if self.syn_attr_cache.contains_key(&synid) {
             return Ok(true)
         }
 
         // use map to reduce rpc calls
         let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
         let id = self.request("vim_call_function", ("map", (attrs, format!("synIDattr(synIDtrans({}), v:val, &termguicolors ? 'gui' : 'cterm')", synid)) ))?;
-        self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Pending);
+        self.syn_attr_cache.insert(synid, FutureSynAttr::Pending);
         self.callbacks.insert(id, Callback::GetSynAttr(synid));
         Ok(false)
     }
@@ -314,7 +314,7 @@ impl Nvim {
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
                         );
-                        self.syn_attr_cache.borrow_mut().insert(synid, FutureSynAttr::Result(Rc::new(attrs)));
+                        self.syn_attr_cache.insert(synid, FutureSynAttr::Result(Rc::new(attrs)));
 
                         let mut should_print = false;
                         for line in self.queue.iter() {
