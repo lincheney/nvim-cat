@@ -318,8 +318,8 @@ impl Nvim {
 
                         let mut should_print = false;
                         for line in self.queue.iter() {
-                            let removed = line.pending.borrow_mut().remove(&synid);
-                            if removed && line.lineno == self.lineno && line.pending.borrow().is_empty() {
+                            let mut pending = line.pending.borrow_mut();
+                            if pending.remove(&synid) && line.lineno == self.lineno && pending.is_empty() {
                                 should_print = true;
                             }
                         }
