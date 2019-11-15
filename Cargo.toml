@@ -4,15 +4,16 @@ version = "0.1.0"
 authors = ["Cheney Lin <lincheney@gmail.com>"]
 
 [dependencies]
-serde = "~ 0.8"
-rmp = "~ 0.7"
-rmp-serde = "0.10"
-libc = "~ 0.2"
-lazy_static = "~ 0.2"
-quick-error = "1.1.0"
-nix = "0.8.0"
+serde = "1.0.102"
+rmp = "0.8.8"
+rmp-serde = "0.14.0"
+rmpv = {version = "0.4.2", features = ["with-serde"]}
+libc = "0.2.65"
+lazy_static = "1.4.0"
+quick-error = "1.2.2"
+nix = "0.15.0"
 
 [dependencies.clap]
-version = "~ 2.19"
+version = "2.33.0"
 features = ["wrap_help"]
 default-features = false

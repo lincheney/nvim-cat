@@ -1,26 +1,27 @@
 extern crate rmp;
+extern crate rmpv;
 extern crate rmp_serde;
 extern crate serde;
 
-use std::process::ChildStdout;
+use std::process::{ChildStdout, ChildStdin};
 use self::serde::{Serialize, Deserialize};
 use nvim::NvimError;
 
 pub type MsgId = u32;
-pub type Deserializer = rmp_serde::Deserializer<ChildStdout>;
-pub type Serializer<'a> = rmp_serde::Serializer<'a, rmp_serde::encode::StructArrayWriter>;
+pub type Serializer = rmp_serde::Serializer<ChildStdin>;
+pub type Deserializer = rmp_serde::Deserializer<rmp_serde::decode::ReadReader<ChildStdout>>;
 
-pub struct Writer<'a> {
+pub struct Writer {
     msg_id:         MsgId,
-    serializer:     Serializer<'a>,
+    serializer:     Serializer,
 }
 
 pub struct Reader {
     deserializer: Deserializer,
 }
 
-impl<'a> Writer<'a> {
-    pub fn new(serializer: Serializer<'a>) -> Self {
+impl Writer {
+    pub fn new(serializer: Serializer) -> Self {
         Writer{ msg_id: 100, serializer: serializer }
     }
 
@@ -35,12 +36,13 @@ impl<'a> Writer<'a> {
 }
 
 impl Reader {
-    pub fn new(deserializer: Deserializer) -> Self {
-        Reader{deserializer: deserializer}
+    pub fn new(reader: ChildStdout) -> Self {
+        Reader{deserializer: Deserializer::new(reader)}
     }
 
-    pub fn read(&mut self) -> Result<Option<(u32, rmp::Value)>, NvimError> {
-        let value: rmp_serde::Value = Deserialize::deserialize(&mut self.deserializer)?;
+    pub fn read(&mut self) -> Result<Option<(u32, rmpv::Value)>, NvimError> {
+        // let value = rmpv::decode::read_value(&mut self.reader)?;
+        let value: rmpv::Value = Deserialize::deserialize(&mut self.deserializer)?;
         let value = value.as_array().expect("expected an array");
         match value[0].as_u64().expect("expected an int") {
             1 => {

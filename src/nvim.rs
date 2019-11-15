@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
-use self::rmp_serde::{Serializer, Deserializer};
+use self::rmp_serde::Serializer;
 use self::serde::Serialize;
 use synattr::{SynAttr, default_attr};
 use rpc::{Reader, Writer, MsgId};
@@ -89,9 +89,9 @@ pub struct NvimOptions {
     pub restricted_mode: bool,
 }
 
-pub struct Nvim<'a> {
+pub struct Nvim {
     reader:         Reader,
-    writer:         RefCell<Writer<'a>>,
+    writer:         RefCell<Writer>,
     syn_attr_cache: RefCell<HashMap<usize, FutureSynAttr>>,
     callbacks:      HashMap<MsgId, Callback>,
     queue:          BinaryHeap<Line>,
@@ -100,7 +100,7 @@ pub struct Nvim<'a> {
     default_attr:   Rc<SynAttr>,
 }
 
-impl<'a> Nvim<'a> {
+impl Nvim {
     pub fn start_process(vimrc: Option<&str>, options: NvimOptions) -> Child {
         let mut args = vec![];
         if let Some(vimrc) = vimrc {
@@ -121,9 +121,9 @@ impl<'a> Nvim<'a> {
             .spawn().expect("could not find nvim")
     }
 
-    pub fn new(stdin: &'a mut ChildStdin, stdout: ChildStdout, options: NvimOptions) -> Self {
+    pub fn new(stdin: ChildStdin, stdout: ChildStdout, options: NvimOptions) -> Self {
         let writer = Writer::new(Serializer::new(stdin));
-        let reader = Reader::new(Deserializer::new(stdout));
+        let reader = Reader::new(stdout);
 
         let default_attr = Rc::new(default_attr());
         let mut syn_attr_cache = HashMap::new();
@@ -252,7 +252,7 @@ impl<'a> Nvim<'a> {
         self.writer.borrow_mut().write(command, args)
     }
 
-    fn wait_for_response(&mut self, id: MsgId) -> NvimResult<rmp::Value> {
+    fn wait_for_response(&mut self, id: MsgId) -> NvimResult<rmpv::Value> {
         loop {
             if let Some((got_id, value)) = self.reader.read()? {
                 if got_id == id {
@@ -336,7 +336,7 @@ impl<'a> Nvim<'a> {
     }
 }
 
-impl<'a> Drop for Nvim<'a> {
+impl Drop for Nvim {
     fn drop(&mut self) {
         // ignore errors
         self.quit().ok();

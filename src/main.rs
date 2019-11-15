@@ -122,10 +122,10 @@ fn entrypoint() -> nvim::NvimResult<bool> {
 
     let process = nvim::Nvim::start_process(vimrc, options);
     let stdout = process.stdout.unwrap();
-    let mut stdin = process.stdin.unwrap();
+    let stdin = process.stdin.unwrap();
 
     let mut poller = poller::Poller::new(stdout.as_raw_fd())?;
-    let mut nvim = nvim::Nvim::new(&mut stdin, stdout, options);
+    let mut nvim = nvim::Nvim::new(stdin, stdout, options);
 
     let mut success = true;
     for (i, &file) in files.iter().enumerate() {
