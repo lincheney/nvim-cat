@@ -90,7 +90,7 @@ pub struct NvimOptions {
 
 pub struct Nvim {
     reader:         Reader,
-    writer:         RefCell<Writer>,
+    writer:         Writer,
     syn_attr_cache: RefCell<HashMap<usize, FutureSynAttr>>,
     callbacks:      HashMap<MsgId, Callback>,
     queue:          BinaryHeap<Line>,
@@ -130,7 +130,7 @@ impl Nvim {
 
         Nvim {
             reader,
-            writer: RefCell::new(writer),
+            writer: writer,
             syn_attr_cache: RefCell::new(syn_attr_cache),
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
@@ -151,13 +151,13 @@ impl Nvim {
         Ok(())
     }
 
-    pub fn quit(&self) -> NvimResult<()> {
+    pub fn quit(&mut self) -> NvimResult<()> {
         // don't wait for response, nvim will have quit by then
         self.request("nvim_command", ("qa!",))?;
         Ok(())
     }
 
-    pub fn filetype_detect(&self) -> NvimResult<()> {
+    pub fn filetype_detect(&mut self) -> NvimResult<()> {
         self.request("nvim_command", ("if &ft == '' | filetype detect | endif",))?;
         Ok(())
     }
@@ -171,7 +171,7 @@ impl Nvim {
     }
 
     // get syn ids for line @lineno which has length @length
-    fn get_synid(&self, lineno: usize, length: usize) -> NvimResult<MsgId> {
+    fn get_synid(&mut self, lineno: usize, length: usize) -> NvimResult<MsgId> {
         // use map to reduce rpc calls
         let range: Vec<usize> = (1..=length).collect();
         let args = (range, format!("synID({}, v:val, 0)", lineno+1));
@@ -246,9 +246,9 @@ impl Nvim {
     }
 
 
-    fn request<T>(&self, command: &str, args: T) -> NvimResult<MsgId>
+    fn request<T>(&mut self, command: &str, args: T) -> NvimResult<MsgId>
             where T: Serialize {
-        self.writer.borrow_mut().write(command, args)
+        self.writer.write(command, args)
     }
 
     fn wait_for_response(&mut self, id: MsgId) -> NvimResult<rmpv::Value> {
