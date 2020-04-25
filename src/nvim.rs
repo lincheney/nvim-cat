@@ -3,7 +3,6 @@ extern crate rmpv;
 extern crate rmp_serde;
 extern crate serde;
 
-use std;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{stdout, Write, Cursor};
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
@@ -257,7 +256,6 @@ impl Nvim {
     }
 
     fn print_lines(&mut self) -> NvimResult<()> {
-        let numbered = self.options.numbered;
         let stdout = stdout();
         let mut stdout = stdout.lock();
         loop {
@@ -267,7 +265,7 @@ impl Nvim {
             }
             let line = self.queue.pop_front().unwrap().unwrap();
 
-            if numbered {
+            if self.options.numbered {
                 stdout.write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
@@ -325,9 +323,9 @@ impl Nvim {
                             .collect();
 
                         let mut set = HashSet::new();
-                        for id in synids.iter() {
-                            if ! self.get_synattr(*id)? {
-                                set.insert(*id);
+                        for &id in synids.iter() {
+                            if ! self.get_synattr(id)? {
+                                set.insert(id);
                             }
                         }
                         let should_print = lineno == self.lineno && set.is_empty();
@@ -358,7 +356,6 @@ impl Nvim {
                         let mut should_print = false;
                         for line in self.queue.iter_mut() {
                             if let Some(line) = line {
-                                // let mut pending = line.pending.borrow_mut();
                                 if line.pending.remove(&synid) && line.lineno == self.lineno && line.pending.is_empty() {
                                     should_print = true;
                                 }
