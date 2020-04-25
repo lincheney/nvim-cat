@@ -1,4 +1,5 @@
 extern crate rmp;
+extern crate rmpv;
 extern crate rmp_serde;
 extern crate serde;
 
@@ -110,7 +111,7 @@ impl Nvim {
 
         Command::new("nvim")
             .arg("--embed")
-            .arg("--headless")
+            // .arg("--headless")
             .arg("-nm")
             .arg("-c").arg(INIT_COMMAND)
             .args(&args)
@@ -137,6 +138,19 @@ impl Nvim {
             default_attr,
             options,
         }
+    }
+
+    pub fn ui_attach(&mut self, width: isize, height: isize) -> NvimResult<()> {
+        let opts: rmpv::Value = vec![("rgb".into(), true.into())].into();
+        let id = self.request("nvim_ui_attach", (width, height, opts))?;
+        self.wait_for_response(id)?;
+        Ok(())
+    }
+
+    pub fn ui_detach(&mut self) -> NvimResult<()> {
+        let id = self.request("nvim_ui_detach", &[0; 0])?;
+        self.wait_for_response(id)?;
+        Ok(())
     }
 
     pub fn press_enter(&mut self) -> NvimResult<()> {
