@@ -43,20 +43,25 @@ impl Reader {
     pub fn read(&mut self) -> Result<Option<(u32, rmpv::Value)>, NvimError> {
         // let value = rmpv::decode::read_value(&mut self.reader)?;
         let value: rmpv::Value = Deserialize::deserialize(&mut self.deserializer)?;
-        let value = value.as_array().expect("expected an array");
-        match value[0].as_u64().expect("expected an int") {
-            1 => {
-                if ! value[2].is_nil() {
-                    let error = value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string");
-                    return Err(NvimError::RpcError(error.to_string()))
-                }
 
-                let id = value[1].as_u64().expect("expected an int") as u32;
-                Ok(Some( (id, value[3].clone()) ))
+        if let rmpv::Value::Array(value) = value {
+            match value[0].as_u64().expect("expected an int") {
+                1 => {
+                    if ! value[2].is_nil() {
+                        let error = value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string");
+                        return Err(NvimError::RpcError(error.to_string()))
+                    }
 
-            },
-            // 2 => None, // notification
-            _ => Ok(None),
+                    let id = value[1].as_u64().expect("expected an int") as u32;
+                    let value = value.into_iter().nth(3).unwrap();
+                    Ok(Some( (id, value) ))
+
+                },
+                // 2 => None, // notification
+                _ => Ok(None),
+            }
+        } else {
+            panic!("sadf");
         }
     }
 }
