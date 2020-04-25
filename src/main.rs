@@ -8,16 +8,18 @@ extern crate libc;
 extern crate clap;
 
 use std::fs::File;
-use std::io::{stderr, Write, ErrorKind};
+use std::io::ErrorKind;
 use std::os::unix::io::AsRawFd;
 use clap::{Arg, App};
 
 macro_rules! print_error(
     ($fmt:expr) => ({
-        writeln!(stderr(), concat!("ERROR: ", $fmt)).ok()
+        use ::std::io::Write;
+        writeln!(::std::io::stderr(), concat!("ERROR: ", $fmt)).ok()
     });
     ($fmt:expr, $($arg:tt)*) => ({
-        writeln!(stderr(), concat!("ERROR: ", $fmt), $($arg)*).ok()
+        use ::std::io::Write;
+        writeln!(::std::io::stderr(), concat!("ERROR: ", $fmt), $($arg)*).ok()
     })
 );
 
