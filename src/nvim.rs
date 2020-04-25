@@ -4,9 +4,8 @@ extern crate rmp_serde;
 extern crate serde;
 
 use std;
-use std::collections::{HashMap, HashSet, BinaryHeap};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{stdout, Write};
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
@@ -34,7 +33,7 @@ struct Line {
     pub lineno: usize,
     pub line: Vec<u8>,
     pub synids: Vec<usize>,
-    pub pending: RefCell<HashSet<usize>>,
+    pub pending: HashSet<usize>,
 }
 
 impl Ord for Line {
@@ -94,7 +93,7 @@ pub struct Nvim {
     writer:         Writer,
     syn_attr_cache: HashMap<usize, FutureSynAttr>,
     callbacks:      HashMap<MsgId, Callback>,
-    queue:          BinaryHeap<Line>,
+    queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
     options:        NvimOptions,
     default_attr:   Rc<SynAttr>,
@@ -134,7 +133,7 @@ impl Nvim {
             writer,
             syn_attr_cache,
             callbacks: HashMap::new(),
-            queue: BinaryHeap::new(),
+            queue: VecDeque::new(),
             lineno: 0,
             default_attr,
             options,
@@ -244,8 +243,12 @@ impl Nvim {
     }
 
     fn print_lines(&mut self) -> NvimResult<()> {
-        while self.queue.peek().map(|l| l.lineno == self.lineno && l.pending.borrow().is_empty()) == Some(true) {
-            let line = self.queue.pop().unwrap();
+        loop {
+            match self.queue.get(0) {
+                Some(Some(l)) if l.lineno == self.lineno && l.pending.is_empty() => (),
+                _ => break,
+            }
+            let line = self.queue.pop_front().unwrap().unwrap();
             let line = self.get_line(line.line, line.synids)?;
 
             if self.options.numbered {
@@ -312,7 +315,13 @@ impl Nvim {
                         }
                         let should_print = lineno == self.lineno && set.is_empty();
 
-                        self.queue.push(Line{lineno, line, synids, pending: RefCell::new(set)});
+                        let index = lineno - self.lineno;
+                        for _ in self.queue.len()..=index {
+                            self.queue.push_back(None);
+                        }
+                        let line = Line{lineno, line, synids, pending: set};
+                        self.queue[index] = Some(line);
+
                         if should_print {
                             self.print_lines()?;
                         }
@@ -330,10 +339,12 @@ impl Nvim {
                         self.syn_attr_cache.insert(synid, FutureSynAttr::Result(Rc::new(attrs)));
 
                         let mut should_print = false;
-                        for line in self.queue.iter() {
-                            let mut pending = line.pending.borrow_mut();
-                            if pending.remove(&synid) && line.lineno == self.lineno && pending.is_empty() {
-                                should_print = true;
+                        for line in self.queue.iter_mut() {
+                            if let Some(line) = line {
+                                // let mut pending = line.pending.borrow_mut();
+                                if line.pending.remove(&synid) && line.lineno == self.lineno && line.pending.is_empty() {
+                                    should_print = true;
+                                }
                             }
                         }
 
