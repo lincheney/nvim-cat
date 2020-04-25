@@ -46,20 +46,14 @@ impl Reader {
         let value = value.as_array().expect("expected an array");
         match value[0].as_u64().expect("expected an int") {
             1 => {
-                // response
-                let err_msg = if ! value[2].is_nil() {
-                    Some(value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string"))
-                } else {
-                    None
-                };
-
-                if let Some(err_msg) = err_msg {
-                    print_error!("{}", err_msg);
-                    Ok(None)
-                } else {
-                    let id = value[1].as_u64().expect("expected an int") as u32;
-                    Ok(Some( (id, value[3].clone()) ))
+                if ! value[2].is_nil() {
+                    let error = value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string");
+                    print_error!("{}", error);
+                    return Ok(None)
                 }
+
+                let id = value[1].as_u64().expect("expected an int") as u32;
+                Ok(Some( (id, value[3].clone()) ))
 
             },
             // 2 => None, // notification

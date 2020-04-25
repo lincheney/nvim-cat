@@ -258,7 +258,6 @@ impl Nvim {
         Ok(())
     }
 
-
     fn request<T>(&mut self, command: &str, args: T) -> NvimResult<MsgId>
             where T: Serialize {
         self.writer.write(command, args)
