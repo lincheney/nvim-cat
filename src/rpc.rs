@@ -54,7 +54,8 @@ impl Reader {
                 };
 
                 if let Some(err_msg) = err_msg {
-                    Err(NvimError::RpcError(err_msg.to_string()))
+                    print_error!("{}", err_msg);
+                    Ok(None)
                 } else {
                     let id = value[1].as_u64().expect("expected an int") as u32;
                     Ok(Some( (id, value[3].clone()) ))
