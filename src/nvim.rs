@@ -21,6 +21,7 @@ const INIT_COMMAND: &str = "set scrolloff=0 mouse= showtabline=0 | NoMatchParen"
 quick_error! {
     #[derive(Debug)]
     pub enum NvimError {
+        RpcError(x: String) { }
         EncodeError(x: rmp_serde::encode::Error) { from() }
         DecodeError(x: rmp_serde::decode::Error) { from() }
         IOError(x: std::io::Error) { from() }

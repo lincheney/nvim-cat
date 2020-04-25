@@ -48,8 +48,7 @@ impl Reader {
             1 => {
                 if ! value[2].is_nil() {
                     let error = value[2].as_array().expect("expected an array")[1].as_str().expect("expected a string");
-                    print_error!("{}", error);
-                    return Ok(None)
+                    return Err(NvimError::RpcError(error.to_string()))
                 }
 
                 let id = value[1].as_u64().expect("expected an int") as u32;
