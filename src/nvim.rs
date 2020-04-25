@@ -95,6 +95,7 @@ pub struct Nvim {
     queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
     options:        NvimOptions,
+    scratch_space:  Vec<u8>,
 }
 
 impl Nvim {
@@ -133,6 +134,7 @@ impl Nvim {
             queue: VecDeque::new(),
             lineno: 0,
             options,
+            scratch_space: vec![],
         }
     }
 
@@ -188,8 +190,12 @@ impl Nvim {
     }
 
     // get @line from vim
-    fn get_line(&self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<Vec<u8>> {
-        let mut parts: Vec<u8> = Vec::with_capacity(line.len());
+    fn get_line<'a>(&mut self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<&[u8]> {
+        if line.len() > self.scratch_space.capacity() {
+            self.scratch_space.reserve(line.len() - self.scratch_space.capacity());
+        }
+        self.scratch_space.clear();
+
         let mut prev: Option<&SynAttr> = None;
         let mut start = 0;
 
@@ -224,16 +230,16 @@ impl Nvim {
 
             let ansi = &ansi.get_ref()[..ansi.position() as usize];
             if ! ansi.is_empty() {
-                push_print_str(&mut parts, &line[start..end]);
-                parts.extend_from_slice(b"\x1b[");
-                parts.extend_from_slice(&ansi[1..]);
-                parts.push(b'm');
+                push_print_str(&mut self.scratch_space, &line[start..end]);
+                self.scratch_space.extend_from_slice(b"\x1b[");
+                self.scratch_space.extend_from_slice(&ansi[1..]);
+                self.scratch_space.push(b'm');
                 start = end;
             }
         }
 
-        push_print_str(&mut parts, &line[start..]);
-        Ok(parts)
+        push_print_str(&mut self.scratch_space, &line[start..]);
+        Ok(&self.scratch_space)
     }
 
     // get the syn attr for @synid (cached)
@@ -251,19 +257,20 @@ impl Nvim {
     }
 
     fn print_lines(&mut self) -> NvimResult<()> {
+        let numbered = self.options.numbered;
         loop {
             match self.queue.get(0) {
                 Some(Some(l)) if l.lineno == self.lineno && l.pending.is_empty() => (),
                 _ => break,
             }
             let line = self.queue.pop_front().unwrap().unwrap();
-            let line = self.get_line(line.line, line.synids)?;
 
-            if self.options.numbered {
+            if numbered {
                 stdout().write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
-            stdout().write_all(&line)?;
+            let line = self.get_line(line.line, line.synids)?;
+            stdout().write_all(line)?;
             stdout().write_all(b"\x1b[0m\n")?;
             self.lineno += 1;
         }
