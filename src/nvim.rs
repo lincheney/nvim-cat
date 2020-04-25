@@ -143,7 +143,7 @@ impl Nvim {
 
     pub fn ui_attach(&mut self, width: isize, height: isize) -> NvimResult<()> {
         let opts: rmpv::Value = vec![("rgb".into(), true.into())].into();
-        let id = self.request("nvim_ui_attach", (width, height, opts, 1))?;
+        let id = self.request("nvim_ui_attach", (width, height, opts))?;
         self.wait_for_response(id)?;
         Ok(())
     }
