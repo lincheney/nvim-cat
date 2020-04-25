@@ -131,8 +131,8 @@ impl Nvim {
 
         Nvim {
             reader,
-            writer: writer,
-            syn_attr_cache: syn_attr_cache,
+            writer,
+            syn_attr_cache,
             callbacks: HashMap::new(),
             queue: BinaryHeap::new(),
             lineno: 0,
