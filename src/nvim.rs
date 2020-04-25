@@ -190,7 +190,7 @@ impl Nvim {
     }
 
     // get @line from vim
-    fn get_line<'a>(&mut self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<&[u8]> {
+    fn get_line(&mut self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<&[u8]> {
         if line.len() > self.scratch_space.capacity() {
             self.scratch_space.reserve(line.len() - self.scratch_space.capacity());
         }
