@@ -171,7 +171,7 @@ impl Nvim {
     }
 
     pub fn filetype_detect(&mut self) -> NvimResult<()> {
-        self.request("nvim_command", ("if &ft == '' | filetype detect | endif",))?;
+        self.request("nvim_command", ("if &ft == '' | silent! filetype detect | endif",))?;
         Ok(())
     }
 
