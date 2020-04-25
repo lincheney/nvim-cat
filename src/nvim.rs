@@ -5,7 +5,7 @@ extern crate serde;
 
 use std;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io::{stdout, Write};
+use std::io::{stdout, Write, Cursor};
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
 use self::rmp_serde::Serializer;
@@ -193,29 +193,40 @@ impl Nvim {
         let mut prev: Option<&SynAttr> = None;
         let mut start = 0;
 
+        let mut ansi = [0u8; 256];
+        macro_rules! ansi_write {
+            ($buf:ident, $prev:ident, $attr:ident, $field:ident) => ({
+                // let accessor = $accessor;
+                match $prev {
+                    Some(p) if p.$field == $attr.$field => (),
+                    _ => {
+                        $buf.write_all(b";").unwrap();
+                        $buf.write_all($attr.$field.as_bytes()).unwrap();
+                    },
+                }
+            })
+        }
+
         for (end, synid) in synids.iter().enumerate() {
             let attr = match self.syn_attr_cache.get(&synid) {
                 Some(&FutureSynAttr::Result(ref attr)) => attr,
                 _ => unreachable!(),
             };
 
-            let ansi = {
-                let mut ansi: Vec<&str> = vec![];
-                if prev.map(|p| p.fg == attr.fg) != Some(true) { ansi.push(&attr.fg) }
-                if prev.map(|p| p.bg == attr.bg) != Some(true) { ansi.push(&attr.bg) }
-                if prev.map(|p| p.bold == attr.bold) != Some(true) { ansi.push(&attr.bold) }
-                if prev.map(|p| p.reverse == attr.reverse) != Some(true) { ansi.push(&attr.reverse) }
-                if prev.map(|p| p.italic == attr.italic) != Some(true) { ansi.push(&attr.italic) }
-                if prev.map(|p| p.underline == attr.underline) != Some(true) { ansi.push(&attr.underline) }
-                ansi.join(";")
-            };
-
+            let mut ansi = Cursor::new(&mut ansi as &mut [u8]);
+            ansi_write!(ansi, prev, attr, fg);
+            ansi_write!(ansi, prev, attr, bg);
+            ansi_write!(ansi, prev, attr, bold);
+            ansi_write!(ansi, prev, attr, reverse);
+            ansi_write!(ansi, prev, attr, italic);
+            ansi_write!(ansi, prev, attr, underline);
             prev = Some(attr);
 
+            let ansi = &ansi.get_ref()[..ansi.position() as usize];
             if ! ansi.is_empty() {
                 push_print_str(&mut parts, &line[start..end]);
                 parts.extend_from_slice(b"\x1b[");
-                parts.extend_from_slice(&ansi.as_bytes());
+                parts.extend_from_slice(&ansi[1..]);
                 parts.push(b'm');
                 start = end;
             }
