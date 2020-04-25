@@ -258,6 +258,8 @@ impl Nvim {
 
     fn print_lines(&mut self) -> NvimResult<()> {
         let numbered = self.options.numbered;
+        let stdout = stdout();
+        let mut stdout = stdout.lock();
         loop {
             match self.queue.get(0) {
                 Some(Some(l)) if l.lineno == self.lineno && l.pending.is_empty() => (),
@@ -266,12 +268,12 @@ impl Nvim {
             let line = self.queue.pop_front().unwrap().unwrap();
 
             if numbered {
-                stdout().write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
+                stdout.write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
             }
 
             let line = self.get_line(line.line, line.synids)?;
-            stdout().write_all(line)?;
-            stdout().write_all(b"\x1b[0m\n")?;
+            stdout.write_all(line)?;
+            stdout.write_all(b"\x1b[0m\n")?;
             self.lineno += 1;
         }
         Ok(())
