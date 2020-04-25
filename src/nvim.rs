@@ -6,7 +6,6 @@ extern crate serde;
 use std;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{stdout, Write};
-use std::rc::Rc;
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
 
 use self::rmp_serde::Serializer;
@@ -55,7 +54,7 @@ pub enum Callback {
 }
 
 enum FutureSynAttr {
-    Result(Rc<SynAttr>),
+    Result(SynAttr),
     Pending,
 }
 
@@ -96,7 +95,6 @@ pub struct Nvim {
     queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
     options:        NvimOptions,
-    default_attr:   Rc<SynAttr>,
 }
 
 impl Nvim {
@@ -124,9 +122,8 @@ impl Nvim {
         let writer = Writer::new(Serializer::new(stdin));
         let reader = Reader::new(stdout);
 
-        let default_attr = Rc::new(default_attr());
         let mut syn_attr_cache = HashMap::new();
-        syn_attr_cache.insert(0, FutureSynAttr::Result(default_attr.clone()));
+        syn_attr_cache.insert(0, FutureSynAttr::Result(default_attr()));
 
         Nvim {
             reader,
@@ -135,7 +132,6 @@ impl Nvim {
             callbacks: HashMap::new(),
             queue: VecDeque::new(),
             lineno: 0,
-            default_attr,
             options,
         }
     }
@@ -194,26 +190,27 @@ impl Nvim {
     // get @line from vim
     fn get_line(&self, line: Vec<u8>, synids: Vec<usize>) -> NvimResult<Vec<u8>> {
         let mut parts: Vec<u8> = Vec::with_capacity(line.len());
-        let mut prev = self.default_attr.clone();
+        let mut prev: Option<&SynAttr> = None;
         let mut start = 0;
-        for (synid, end) in synids.into_iter().zip(0..line.len()) {
+
+        for (end, synid) in synids.iter().enumerate() {
             let attr = match self.syn_attr_cache.get(&synid) {
-                Some(&FutureSynAttr::Result(ref attr)) => attr.clone(),
+                Some(&FutureSynAttr::Result(ref attr)) => attr,
                 _ => unreachable!(),
             };
 
             let ansi = {
                 let mut ansi: Vec<&str> = vec![];
-                if attr.fg != prev.fg { ansi.push(&attr.fg) }
-                if attr.bg != prev.bg { ansi.push(&attr.bg) }
-                if attr.bold != prev.bold { ansi.push(&attr.bold) }
-                if attr.reverse != prev.reverse { ansi.push(&attr.reverse) }
-                if attr.italic != prev.italic { ansi.push(&attr.italic) }
-                if attr.underline != prev.underline { ansi.push(&attr.underline) }
+                if prev.map(|p| p.fg == attr.fg) != Some(true) { ansi.push(&attr.fg) }
+                if prev.map(|p| p.bg == attr.bg) != Some(true) { ansi.push(&attr.bg) }
+                if prev.map(|p| p.bold == attr.bold) != Some(true) { ansi.push(&attr.bold) }
+                if prev.map(|p| p.reverse == attr.reverse) != Some(true) { ansi.push(&attr.reverse) }
+                if prev.map(|p| p.italic == attr.italic) != Some(true) { ansi.push(&attr.italic) }
+                if prev.map(|p| p.underline == attr.underline) != Some(true) { ansi.push(&attr.underline) }
                 ansi.join(";")
             };
 
-            prev = attr;
+            prev = Some(attr);
 
             if ! ansi.is_empty() {
                 push_print_str(&mut parts, &line[start..end]);
@@ -336,7 +333,7 @@ impl Nvim {
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
                         );
-                        self.syn_attr_cache.insert(synid, FutureSynAttr::Result(Rc::new(attrs)));
+                        self.syn_attr_cache.insert(synid, FutureSynAttr::Result(attrs));
 
                         let mut should_print = false;
                         for line in self.queue.iter_mut() {
