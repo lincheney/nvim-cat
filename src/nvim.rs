@@ -94,6 +94,7 @@ pub struct Nvim {
     queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
     default_attr:   SynAttr,
+    normal_attr:    SynAttr,
     scratch_space:  Vec<u8>,
     termguicolors:  bool,
     hi_linenr:      Option<SynAttr>,
@@ -136,6 +137,7 @@ impl Nvim {
             lineno: 0,
             termguicolors: false,
             default_attr: Default::default(),
+            normal_attr: Default::default(),
             scratch_space: vec![],
             hi_linenr: None,
         };
@@ -151,7 +153,7 @@ impl Nvim {
         // get synattr of Normal
         let normal = nvim._get_synattr("Normal")?;
         nvim.syn_attr_cache.insert(0, FutureSynAttr::Result(normal.clone()));
-        nvim.default_attr = normal;
+        nvim.normal_attr = normal;
 
         if options.numbered {
             nvim.hi_linenr = Some(nvim._get_synattr("LineNR")?);
@@ -174,7 +176,7 @@ impl Nvim {
             attrs[3].as_str().expect("expected a string"),
             attrs[4].as_str().expect("expected a string"),
             attrs[5].as_str().expect("expected a string"),
-            &self.default_attr,
+            &self.normal_attr,
             self.termguicolors,
         ))
     }
@@ -244,19 +246,15 @@ impl Nvim {
         let mut ansi = [0u8; 256];
         macro_rules! ansi_write {
             ($buf:ident, $prev:ident, $attr:ident, $field:ident) => ({
-                // let accessor = $accessor;
-                match $prev {
-                    Some(p) if p.$field == $attr.$field => (),
-                    _ => {
-                        $buf.write_all(b";").unwrap();
-                        $buf.write_all($attr.$field.as_bytes()).unwrap();
-                    },
+                if $prev.$field != $attr.$field {
+                    $buf.write_all(b";").unwrap();
+                    $buf.write_all($attr.$field.as_bytes()).unwrap();
                 }
             })
         }
 
-        let mut prev_synid = if synids.is_empty() { 1 } else { 0 };
-        let mut prev_attr: Option<&SynAttr> = None;
+        let mut prev_synid = synids.get(0).unwrap_or(&0) + 1;
+        let mut prev_attr = &self.default_attr;
         let mut start = 0;
 
         let synids = synids.iter().chain(std::iter::once(&0));
@@ -277,7 +275,7 @@ impl Nvim {
             ansi_write!(ansi, prev_attr, attr, reverse);
             ansi_write!(ansi, prev_attr, attr, italic);
             ansi_write!(ansi, prev_attr, attr, underline);
-            prev_attr = Some(attr);
+            prev_attr = attr;
             prev_synid = synid;
 
             let ansi = &ansi.get_ref()[..ansi.position() as usize];
@@ -408,7 +406,7 @@ impl Nvim {
                             attrs[3].as_str().expect("expected a string"),
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
-                            &self.default_attr,
+                            &self.normal_attr,
                             self.termguicolors,
                         );
                         self.syn_attr_cache.insert(synid, FutureSynAttr::Result(attrs));
