@@ -195,7 +195,8 @@ impl Nvim {
         }
         self.scratch_space.clear();
 
-        let mut prev: Option<&SynAttr> = None;
+        let mut prev_synid: Option<usize> = None;
+        let mut prev_attr: Option<&SynAttr> = None;
         let mut start = 0;
 
         let mut ansi = [0u8; 256];
@@ -212,20 +213,25 @@ impl Nvim {
             })
         }
 
-        for (end, synid) in synids.iter().enumerate() {
+        for (end, &synid) in synids.iter().enumerate() {
+            if Some(synid) == prev_synid {
+                continue
+            }
+
             let attr = match self.syn_attr_cache.get(&synid) {
                 Some(&FutureSynAttr::Result(ref attr)) => attr,
                 _ => unreachable!(),
             };
 
             let mut ansi = Cursor::new(&mut ansi as &mut [u8]);
-            ansi_write!(ansi, prev, attr, fg);
-            ansi_write!(ansi, prev, attr, bg);
-            ansi_write!(ansi, prev, attr, bold);
-            ansi_write!(ansi, prev, attr, reverse);
-            ansi_write!(ansi, prev, attr, italic);
-            ansi_write!(ansi, prev, attr, underline);
-            prev = Some(attr);
+            ansi_write!(ansi, prev_attr, attr, fg);
+            ansi_write!(ansi, prev_attr, attr, bg);
+            ansi_write!(ansi, prev_attr, attr, bold);
+            ansi_write!(ansi, prev_attr, attr, reverse);
+            ansi_write!(ansi, prev_attr, attr, italic);
+            ansi_write!(ansi, prev_attr, attr, underline);
+            prev_attr = Some(attr);
+            prev_synid = Some(synid);
 
             let ansi = &ansi.get_ref()[..ansi.position() as usize];
             if ! ansi.is_empty() {
