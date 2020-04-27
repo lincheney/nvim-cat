@@ -194,7 +194,7 @@ impl Nvim {
         }
         self.scratch_space.clear();
 
-        let mut prev_synid: Option<usize> = None;
+        let mut prev_synid = 0;
         let mut prev_attr: Option<&SynAttr> = None;
         let mut start = 0;
 
@@ -213,7 +213,7 @@ impl Nvim {
         }
 
         for (end, &synid) in synids.iter().enumerate() {
-            if Some(synid) == prev_synid {
+            if synid == prev_synid {
                 continue
             }
 
@@ -230,7 +230,7 @@ impl Nvim {
             ansi_write!(ansi, prev_attr, attr, italic);
             ansi_write!(ansi, prev_attr, attr, underline);
             prev_attr = Some(attr);
-            prev_synid = Some(synid);
+            prev_synid = synid;
 
             let ansi = &ansi.get_ref()[..ansi.position() as usize];
             if ! ansi.is_empty() {
