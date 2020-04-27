@@ -19,17 +19,6 @@ const NOUNDERLINE: &str = "24";
 const NOFG: &str = "39";
 const NOBG: &str = "49";
 
-pub fn default_attr() -> SynAttr {
-    SynAttr{
-        fg: NOFG.to_string(),
-        bg: NOBG.to_string(),
-        bold: NOBOLD,
-        reverse: NOREVERSE,
-        italic: NOITALIC,
-        underline: NOUNDERLINE,
-    }
-}
-
 fn parse_colour(string: &str, truecolor: bool) -> Option<String> {
     if string.is_empty() { return None; }
 
@@ -73,6 +62,19 @@ impl SynAttr {
             reverse: if !reverse.is_empty() { REVERSE } else { default.map(|d| d.reverse).unwrap_or(NOREVERSE) },
             italic: if !italic.is_empty() { ITALIC } else { default.map(|d| d.italic).unwrap_or(NOITALIC) },
             underline: if !underline.is_empty() { UNDERLINE } else { default.map(|d| d.underline).unwrap_or(NOUNDERLINE) },
+        }
+    }
+}
+
+impl std::default::Default for SynAttr {
+    fn default() -> Self {
+        SynAttr{
+            fg: NOFG.to_string(),
+            bg: NOBG.to_string(),
+            bold: NOBOLD,
+            reverse: NOREVERSE,
+            italic: NOITALIC,
+            underline: NOUNDERLINE,
         }
     }
 }

@@ -6,10 +6,11 @@ extern crate serde;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{stdout, Write, Cursor};
 use std::process::{Command, Child, Stdio, ChildStdout, ChildStdin};
+use std::default::Default;
 
 use self::rmp_serde::Serializer;
 use self::serde::Serialize;
-use synattr::{SynAttr, default_attr};
+use synattr::SynAttr;
 use rpc::{Reader, Writer, MsgId};
 
 const BUFNUM: usize = 1;
@@ -136,7 +137,7 @@ impl Nvim {
             lineno: 0,
             termguicolors: false,
             options,
-            default_attr: default_attr(),
+            default_attr: Default::default(),
             scratch_space: vec![],
         };
 
