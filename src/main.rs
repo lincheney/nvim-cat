@@ -28,6 +28,7 @@ mod nvim;
 mod epoll;
 mod synattr;
 mod poller;
+mod color;
 
 fn dump_file(
         filename: &str,

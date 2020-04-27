@@ -96,6 +96,7 @@ pub struct Nvim {
     options:        NvimOptions,
     default_attr:   SynAttr,
     scratch_space:  Vec<u8>,
+    termguicolors:  bool,
 }
 
 impl Nvim {
@@ -133,6 +134,7 @@ impl Nvim {
             callbacks: HashMap::new(),
             queue: VecDeque::new(),
             lineno: 0,
+            termguicolors: false,
             options,
             default_attr: default_attr(),
             scratch_space: vec![],
@@ -142,6 +144,9 @@ impl Nvim {
         nvim.ui_attach(100, 100)?;
         nvim.press_enter()?; // press enter now and then to get past blocking error messages
         nvim.ui_detach()?;
+
+        let id = nvim.request("nvim_get_option", ("termguicolors",))?;
+        nvim.termguicolors = nvim.wait_for_response(id)?.as_bool().expect("expected a bool");
 
         // get synattr of Normal
         let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
@@ -157,6 +162,7 @@ impl Nvim {
             attrs[4].as_str().expect("expected a string"),
             attrs[5].as_str().expect("expected a string"),
             None,
+            nvim.termguicolors,
         );
         nvim.syn_attr_cache.insert(0, FutureSynAttr::Result(attrs.clone()));
         nvim.default_attr = attrs;
@@ -384,6 +390,7 @@ impl Nvim {
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
                             Some(&self.default_attr),
+                            self.termguicolors,
                         );
                         self.syn_attr_cache.insert(synid, FutureSynAttr::Result(attrs));
 

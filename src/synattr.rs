@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[derive(Clone, Debug)]
 pub struct SynAttr {
     pub fg: String,
@@ -21,40 +19,6 @@ const NOUNDERLINE: &str = "24";
 const NOFG: &str = "39";
 const NOBG: &str = "49";
 
-lazy_static! {
-    static ref COLOUR_MAP: HashMap<&'static str, u8> = {
-        let mut m = HashMap::new();
-        m.insert("black", 0);
-        m.insert("darkblue", 4);
-        m.insert("darkgreen", 2);
-        m.insert("darkcyan", 6);
-        m.insert("darkred", 1);
-        m.insert("darkmagenta", 5);
-        m.insert("darkyellow", 3);
-        m.insert("brown", 3);
-        m.insert("lightgray", 7);
-        m.insert("lightgrey", 7);
-        m.insert("gray", 7);
-        m.insert("grey", 7);
-        m.insert("darkgray", 8);
-        m.insert("darkgrey", 8);
-        m.insert("blue", 12);
-        m.insert("lightblue", 12);
-        m.insert("green", 10);
-        m.insert("lightgreen", 10);
-        m.insert("cyan", 14);
-        m.insert("lightcyan", 14);
-        m.insert("red", 9);
-        m.insert("lightred", 9);
-        m.insert("magenta", 13);
-        m.insert("lightmagenta", 13);
-        m.insert("yellow", 11);
-        m.insert("lightyellow", 11);
-        m.insert("white", 15);
-        m
-    };
-}
-
 pub fn default_attr() -> SynAttr {
     SynAttr{
         fg: NOFG.to_string(),
@@ -66,7 +30,7 @@ pub fn default_attr() -> SynAttr {
     }
 }
 
-fn parse_colour(string: &str) -> Option<String> {
+fn parse_colour(string: &str, truecolor: bool) -> Option<String> {
     if string.is_empty() { return None; }
 
     if string.starts_with('#') {
@@ -75,17 +39,32 @@ fn parse_colour(string: &str) -> Option<String> {
         return Some(format!("2;{};{};{}", i>>16, (i>>8)&0xff, i&0xff));
     }
 
+    if let Ok(n) = string.parse::<u8>() {
+        return Some(format!("5;{}", n));
+    }
+
     let string = string.to_ascii_lowercase();
-    let num = string.parse::<u8>().ok()
-        .or_else(|| COLOUR_MAP.get(&string[..]).copied());
-    num.map(|i| format!("5;{}", i))
+    if truecolor {
+        ::color::TRUECOLOR_MAP.get(&string[..]).map(|(r, g, b)| format!("2;{};{};{}", r, g, b))
+    } else {
+        ::color::COLOR_MAP.get(&string[..]).map(|n| format!("5;{}", n))
+    }
 }
 
 
 impl SynAttr {
-    pub fn new(fg: &str, bg: &str, bold: &str, reverse: &str, italic: &str, underline: &str, default: Option<&SynAttr>) -> Self {
-        let fg = parse_colour(fg);
-        let bg = parse_colour(bg);
+    pub fn new(
+        fg: &str,
+        bg: &str,
+        bold: &str,
+        reverse: &str,
+        italic: &str,
+        underline: &str,
+        default: Option<&SynAttr>,
+        truecolor: bool,
+    ) -> Self {
+        let fg = parse_colour(fg, truecolor);
+        let bg = parse_colour(bg, truecolor);
 
         SynAttr{
             fg: if let Some(fg) = fg { format!("38;{}", fg) } else { default.map(|d| &d.fg[..]).unwrap_or(NOFG).to_string() },
