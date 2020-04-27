@@ -39,11 +39,6 @@ fn dump_file(
     let file = if filename == "-" { "/dev/stdin" } else { filename };
     // println!("{}", file);
 
-    // neovim pauses for 1s if there are errors and no ui
-    nvim.ui_attach(100, 100)?;
-    nvim.press_enter()?; // press enter now and then to get past blocking error messages
-    nvim.ui_detach()?;
-
     if let Some(filetype) = filetype {
         nvim.nvim_command(&format!("set ft={}", filetype))?;
     } else {
@@ -136,7 +131,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
     let stdin = process.stdin.unwrap();
 
     let mut poller = poller::Poller::new(stdout.as_raw_fd())?;
-    let mut nvim = nvim::Nvim::new(stdin, stdout, options);
+    let mut nvim = nvim::Nvim::new(stdin, stdout, options)?;
 
     let mut success = true;
     for (i, &file) in files.iter().enumerate() {

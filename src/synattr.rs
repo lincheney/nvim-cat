@@ -83,17 +83,17 @@ fn parse_colour(string: &str) -> Option<String> {
 
 
 impl SynAttr {
-    pub fn new(fg: &str, bg: &str, bold: &str, reverse: &str, italic: &str, underline: &str) -> Self {
+    pub fn new(fg: &str, bg: &str, bold: &str, reverse: &str, italic: &str, underline: &str, default: Option<&SynAttr>) -> Self {
         let fg = parse_colour(fg);
         let bg = parse_colour(bg);
 
         SynAttr{
-            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { NOFG.to_string() },
-            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { NOBG.to_string() },
-            bold: if bold.is_empty() { NOBOLD } else { BOLD },
-            reverse: if reverse.is_empty() { NOREVERSE } else { REVERSE },
-            italic: if italic.is_empty() { NOITALIC } else { ITALIC },
-            underline: if underline.is_empty() { NOUNDERLINE } else { UNDERLINE },
+            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { default.map(|d| &d.fg[..]).unwrap_or(NOFG).to_string() },
+            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { default.map(|d| &d.bg[..]).unwrap_or(NOBG).to_string() },
+            bold: if !bold.is_empty() { BOLD } else { default.map(|d| d.bold).unwrap_or(NOBOLD) },
+            reverse: if !reverse.is_empty() { REVERSE } else { default.map(|d| d.reverse).unwrap_or(NOREVERSE) },
+            italic: if !italic.is_empty() { ITALIC } else { default.map(|d| d.italic).unwrap_or(NOITALIC) },
+            underline: if !underline.is_empty() { UNDERLINE } else { default.map(|d| d.underline).unwrap_or(NOUNDERLINE) },
         }
     }
 }

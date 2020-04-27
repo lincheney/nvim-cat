@@ -94,6 +94,7 @@ pub struct Nvim {
     queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
     options:        NvimOptions,
+    default_attr:   SynAttr,
     scratch_space:  Vec<u8>,
 }
 
@@ -121,23 +122,46 @@ impl Nvim {
             .spawn().expect("could not find nvim")
     }
 
-    pub fn new(stdin: ChildStdin, stdout: ChildStdout, options: NvimOptions) -> Self {
+    pub fn new(stdin: ChildStdin, stdout: ChildStdout, options: NvimOptions) -> NvimResult<Self> {
         let writer = Writer::new(Serializer::new(stdin));
         let reader = Reader::new(stdout);
 
-        let mut syn_attr_cache = HashMap::new();
-        syn_attr_cache.insert(0, FutureSynAttr::Result(default_attr()));
-
-        Nvim {
+        let mut nvim = Nvim {
             reader,
             writer,
-            syn_attr_cache,
+            syn_attr_cache: HashMap::new(),
             callbacks: HashMap::new(),
             queue: VecDeque::new(),
             lineno: 0,
             options,
+            default_attr: default_attr(),
             scratch_space: vec![],
-        }
+        };
+
+        // neovim pauses for 1s if there are errors and no ui
+        nvim.ui_attach(100, 100)?;
+        nvim.press_enter()?; // press enter now and then to get past blocking error messages
+        nvim.ui_detach()?;
+
+        // get synattr of Normal
+        let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
+        let id = nvim.request("vim_call_function", ("map", (attrs, "synIDattr(synIDtrans(hlID(\"Normal\")), v:val, &termguicolors ? 'gui' : 'cterm')") ))?;
+
+        let value = nvim.wait_for_response(id)?;
+        let attrs = value.as_array().expect("expected an array");
+        let attrs = SynAttr::new(
+            attrs[0].as_str().expect("expected a string"),
+            attrs[1].as_str().expect("expected a string"),
+            attrs[2].as_str().expect("expected a string"),
+            attrs[3].as_str().expect("expected a string"),
+            attrs[4].as_str().expect("expected a string"),
+            attrs[5].as_str().expect("expected a string"),
+            None,
+        );
+        nvim.syn_attr_cache.insert(0, FutureSynAttr::Result(attrs.clone()));
+        nvim.default_attr = attrs;
+
+        Ok(nvim)
     }
 
     pub fn ui_attach(&mut self, width: isize, height: isize) -> NvimResult<()> {
@@ -197,10 +221,6 @@ impl Nvim {
         }
         self.scratch_space.clear();
 
-        let mut prev_synid = 0;
-        let mut prev_attr: Option<&SynAttr> = None;
-        let mut start = 0;
-
         let mut ansi = [0u8; 256];
         macro_rules! ansi_write {
             ($buf:ident, $prev:ident, $attr:ident, $field:ident) => ({
@@ -215,7 +235,12 @@ impl Nvim {
             })
         }
 
-        for (end, &synid) in synids.iter().enumerate() {
+        let mut prev_synid = if synids.is_empty() { 1 } else { 0 };
+        let mut prev_attr: Option<&SynAttr> = None;
+        let mut start = 0;
+
+        let synids = synids.iter().chain(std::iter::once(&0));
+        for (end, &synid) in synids.enumerate() {
             if synid == prev_synid {
                 continue
             }
@@ -279,7 +304,7 @@ impl Nvim {
 
             let line = self.get_line(line.line, line.synids)?;
             stdout.write_all(line)?;
-            stdout.write_all(b"\x1b[0m\n")?;
+            stdout.write_all(b"\x1b[K\x1b[0m\n")?;
             self.lineno += 1;
         }
         Ok(())
@@ -358,6 +383,7 @@ impl Nvim {
                             attrs[3].as_str().expect("expected a string"),
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
+                            Some(&self.default_attr),
                         );
                         self.syn_attr_cache.insert(synid, FutureSynAttr::Result(attrs));
 
