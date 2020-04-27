@@ -49,19 +49,19 @@ impl SynAttr {
         reverse: &str,
         italic: &str,
         underline: &str,
-        default: Option<&SynAttr>,
+        default: &SynAttr,
         truecolor: bool,
     ) -> Self {
         let fg = parse_colour(fg, truecolor);
         let bg = parse_colour(bg, truecolor);
 
         SynAttr{
-            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { default.map(|d| &d.fg[..]).unwrap_or(NOFG).to_string() },
-            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { default.map(|d| &d.bg[..]).unwrap_or(NOBG).to_string() },
-            bold: if !bold.is_empty() { BOLD } else { default.map(|d| d.bold).unwrap_or(NOBOLD) },
-            reverse: if !reverse.is_empty() { REVERSE } else { default.map(|d| d.reverse).unwrap_or(NOREVERSE) },
-            italic: if !italic.is_empty() { ITALIC } else { default.map(|d| d.italic).unwrap_or(NOITALIC) },
-            underline: if !underline.is_empty() { UNDERLINE } else { default.map(|d| d.underline).unwrap_or(NOUNDERLINE) },
+            fg: if let Some(fg) = fg { format!("38;{}", fg) } else { default.fg.to_string() },
+            bg: if let Some(bg) = bg { format!("48;{}", bg) } else { default.bg.to_string() },
+            bold: if !bold.is_empty() { BOLD } else { default.bold },
+            reverse: if !reverse.is_empty() { REVERSE } else { default.reverse },
+            italic: if !italic.is_empty() { ITALIC } else { default.italic },
+            underline: if !underline.is_empty() { UNDERLINE } else { default.underline },
         }
     }
 }

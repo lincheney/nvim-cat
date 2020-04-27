@@ -94,10 +94,10 @@ pub struct Nvim {
     callbacks:      HashMap<MsgId, Callback>,
     queue:          VecDeque<Option<Line>>,
     pub lineno:     usize,
-    options:        NvimOptions,
     default_attr:   SynAttr,
     scratch_space:  Vec<u8>,
     termguicolors:  bool,
+    hi_linenr:      Option<SynAttr>,
 }
 
 impl Nvim {
@@ -136,9 +136,9 @@ impl Nvim {
             queue: VecDeque::new(),
             lineno: 0,
             termguicolors: false,
-            options,
             default_attr: Default::default(),
             scratch_space: vec![],
+            hi_linenr: None,
         };
 
         // neovim pauses for 1s if there are errors and no ui
@@ -150,25 +150,34 @@ impl Nvim {
         nvim.termguicolors = nvim.wait_for_response(id)?.as_bool().expect("expected a bool");
 
         // get synattr of Normal
-        let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
-        let id = nvim.request("vim_call_function", ("map", (attrs, "synIDattr(synIDtrans(hlID(\"Normal\")), v:val, &termguicolors ? 'gui' : 'cterm')") ))?;
+        let normal = nvim._get_synattr("Normal")?;
+        nvim.syn_attr_cache.insert(0, FutureSynAttr::Result(normal.clone()));
+        nvim.default_attr = normal;
 
-        let value = nvim.wait_for_response(id)?;
+        if options.numbered {
+            nvim.hi_linenr = Some(nvim._get_synattr("LineNR")?);
+        }
+
+        Ok(nvim)
+    }
+
+    fn _get_synattr(&mut self, name: &str) -> NvimResult<SynAttr> {
+        let attrs = ("fg", "bg", "bold", "reverse", "italic", "underline");
+        let func = format!("synIDattr(synIDtrans(hlID('{}')), v:val, &termguicolors ? 'gui' : 'cterm')", name);
+        let id = self.request("vim_call_function", ("map", (attrs, func) ))?;
+
+        let value = self.wait_for_response(id)?;
         let attrs = value.as_array().expect("expected an array");
-        let attrs = SynAttr::new(
+        Ok(SynAttr::new(
             attrs[0].as_str().expect("expected a string"),
             attrs[1].as_str().expect("expected a string"),
             attrs[2].as_str().expect("expected a string"),
             attrs[3].as_str().expect("expected a string"),
             attrs[4].as_str().expect("expected a string"),
             attrs[5].as_str().expect("expected a string"),
-            None,
-            nvim.termguicolors,
-        );
-        nvim.syn_attr_cache.insert(0, FutureSynAttr::Result(attrs.clone()));
-        nvim.default_attr = attrs;
-
-        Ok(nvim)
+            &self.default_attr,
+            self.termguicolors,
+        ))
     }
 
     pub fn ui_attach(&mut self, width: isize, height: isize) -> NvimResult<()> {
@@ -303,12 +312,22 @@ impl Nvim {
                 Some(Some(l)) if l.lineno == self.lineno && l.pending.is_empty() => (),
                 _ => break,
             }
-            let line = self.queue.pop_front().unwrap().unwrap();
 
-            if self.options.numbered {
-                stdout.write_all(format!("{:6}  ", self.lineno+1).as_bytes())?;
+            if let Some(ref attr) = self.hi_linenr {
+                write!(
+                    stdout,
+                    "\x1b[{fg};{bg};{bold};{reverse};{italic};{underline}m{lineno:6}  \x1b[0m",
+                    fg=attr.fg,
+                    bg=attr.bg,
+                    bold=attr.bold,
+                    reverse=attr.reverse,
+                    italic=attr.italic,
+                    underline=attr.underline,
+                    lineno=self.lineno+1,
+                )?;
             }
 
+            let line = self.queue.pop_front().unwrap().unwrap();
             let line = self.get_line(line.line, line.synids)?;
             stdout.write_all(line)?;
             stdout.write_all(b"\x1b[K\x1b[0m\n")?;
@@ -390,7 +409,7 @@ impl Nvim {
                             attrs[3].as_str().expect("expected a string"),
                             attrs[4].as_str().expect("expected a string"),
                             attrs[5].as_str().expect("expected a string"),
-                            Some(&self.default_attr),
+                            &self.default_attr,
                             self.termguicolors,
                         );
                         self.syn_attr_cache.insert(synid, FutureSynAttr::Result(attrs));
