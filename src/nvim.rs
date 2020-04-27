@@ -186,7 +186,7 @@ impl Nvim {
     // get syn ids for line @lineno which has length @length
     fn get_synid(&mut self, lineno: usize, length: usize) -> NvimResult<MsgId> {
         // use map to reduce rpc calls
-        let expr = format!("map(range(1, {}), \"synID({}, v:val, 0)\")", length+1, lineno);
+        let expr = format!("map(range(1, {}), \"synID({}, v:val, 0)\")", length+1, lineno+1);
         self.request("nvim_eval", (expr,))
     }
 
