@@ -13,7 +13,6 @@ use self::serde::Serialize;
 use synattr::SynAttr;
 use rpc::{Reader, Writer, MsgId};
 
-const BUFNUM: usize = 1;
 const INIT_COMMAND: &str = "set scrolloff=0 mouse= showtabline=0 | NoMatchParen";
 
 quick_error! {
@@ -210,6 +209,11 @@ impl Nvim {
         Ok(())
     }
 
+    pub fn buf_set_name(&mut self, name: &str) -> NvimResult<()> {
+        self.request("nvim_buf_set_name", (0, name))?;
+        Ok(())
+    }
+
     pub fn filetype_detect(&mut self) -> NvimResult<()> {
         self.request("nvim_command", ("if &ft == '' | silent! filetype detect | endif",))?;
         Ok(())
@@ -217,7 +221,7 @@ impl Nvim {
 
     // add @line to vim
     pub fn add_line(&mut self, line: String, lineno: usize) -> NvimResult<()> {
-        let id = self.request("buffer_insert", (BUFNUM, lineno, &[&line]))?;
+        let id = self.request("buffer_insert", (0, lineno, &[&line]))?;
         let line: Vec<u8> = Vec::from(&line[..]);
         self.callbacks.insert(id, Callback::AddLine(lineno, line));
         Ok(())
@@ -336,8 +340,7 @@ impl Nvim {
         Ok(())
     }
 
-    fn request<T>(&mut self, command: &str, args: T) -> NvimResult<MsgId>
-            where T: Serialize {
+    pub fn request<T: Serialize>(&mut self, command: &str, args: T) -> NvimResult<MsgId> {
         self.writer.write(command, args)
     }
 
@@ -355,11 +358,7 @@ impl Nvim {
         // self.syn_attr_cache.clear();
         self.queue.clear();
         self.lineno = 0;
-
-        // clear vim buffer
-        let lines: [&str; 0] = [];
-        let id = self.request("buffer_set_line_slice", (BUFNUM, 0, -1, true, true, lines))?;
-        self.wait_for_response(id)?;
+        self.nvim_command("bwipe!")?;
         Ok(())
     }
 

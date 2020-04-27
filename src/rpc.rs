@@ -26,9 +26,7 @@ impl Writer {
         Writer{ msg_id: 100, serializer }
     }
 
-    pub fn write<T>(&mut self, command: &str, args: T) -> Result<MsgId, NvimError>
-            where T: Serialize {
-
+    pub fn write<T: Serialize>(&mut self, command: &str, args: T) -> Result<MsgId, NvimError> {
         self.msg_id += 1;
         let value = ( 0, self.msg_id, command, args );
         value.serialize(&mut self.serializer)?;

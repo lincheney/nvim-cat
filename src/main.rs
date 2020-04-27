@@ -38,6 +38,7 @@ fn dump_file(
         ) -> nvim::NvimResult<()> {
 
     let file = if filename == "-" { "/dev/stdin" } else { filename };
+    nvim.buf_set_name(file)?;
     // println!("{}", file);
 
     if let Some(filetype) = filetype {
