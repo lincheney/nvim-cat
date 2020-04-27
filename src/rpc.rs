@@ -3,13 +3,14 @@ extern crate rmpv;
 extern crate rmp_serde;
 extern crate serde;
 
+use std::io::BufReader;
 use std::process::{ChildStdout, ChildStdin};
 use self::serde::{Serialize, Deserialize};
 use nvim::NvimError;
 
 pub type MsgId = u32;
 pub type Serializer = rmp_serde::Serializer<ChildStdin>;
-pub type Deserializer = rmp_serde::Deserializer<rmp_serde::decode::ReadReader<ChildStdout>>;
+pub type Deserializer = rmp_serde::Deserializer<rmp_serde::decode::ReadReader<BufReader<ChildStdout>>>;
 
 pub struct Writer {
     msg_id:         MsgId,
@@ -37,7 +38,7 @@ impl Writer {
 
 impl Reader {
     pub fn new(reader: ChildStdout) -> Self {
-        Reader{deserializer: Deserializer::new(reader)}
+        Reader{deserializer: Deserializer::new(BufReader::new(reader))}
     }
 
     pub fn read(&mut self) -> Result<Option<(u32, rmpv::Value)>, NvimError> {
