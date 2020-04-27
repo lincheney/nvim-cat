@@ -110,12 +110,17 @@ fn entrypoint() -> nvim::NvimResult<bool> {
         .arg(Arg::with_name("restricted_mode")
              .short("Z")
              .help("Restricted mode"))
+        .arg(Arg::with_name("colorscheme")
+            .value_name("colorscheme")
+            .short("s")
+            .help("Colorscheme"))
         .arg(Arg::with_name("FILE")
              .multiple(true))
         .get_matches();
 
     let filetype = matches.value_of("filetype");
     let vimrc = matches.value_of("vimrc");
+    let colorscheme = matches.value_of("colorscheme");
     let files: Vec<&str> = match matches.values_of("FILE") {
         Some(values) => values.collect(),
         None => vec!["-"],
@@ -126,7 +131,7 @@ fn entrypoint() -> nvim::NvimResult<bool> {
         restricted_mode: matches.is_present("restricted_mode"),
     };
 
-    let process = nvim::Nvim::start_process(vimrc, options);
+    let process = nvim::Nvim::start_process(vimrc, colorscheme, options);
     let stdout = process.stdout.unwrap();
     let stdin = process.stdin.unwrap();
 

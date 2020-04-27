@@ -98,21 +98,24 @@ pub struct Nvim {
 }
 
 impl Nvim {
-    pub fn start_process(vimrc: Option<&str>, options: NvimOptions) -> Child {
-        let mut args = vec![];
+    pub fn start_process(vimrc: Option<&str>, colorscheme: Option<&str>, options: NvimOptions) -> Child {
+        let mut command = Command::new("nvim");
+        command.arg("--embed");
+        command.arg("-nm");
+        // command.arg("--headless");
+        command.arg("-c").arg(INIT_COMMAND);
+
         if let Some(vimrc) = vimrc {
-            args.push("-u"); args.push(vimrc);
+            command.arg("-u").arg(vimrc);
+        }
+        if let Some(colorscheme) = colorscheme {
+            command.arg("-c").arg(format!("colorscheme {}", colorscheme));
         }
         if options.restricted_mode {
-            args.push("-Z");
+            command.arg("-Z");
         }
 
-        Command::new("nvim")
-            .arg("--embed")
-            // .arg("--headless")
-            .arg("-nm")
-            .arg("-c").arg(INIT_COMMAND)
-            .args(&args)
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn().expect("could not find nvim")
